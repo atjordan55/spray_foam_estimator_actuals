@@ -63,18 +63,16 @@ export default function SprayFoamEstimator() {
     equipmentRental: 0
   });
 
-  const [sprayAreas, setSprayAreas] = useState([
-    {
-      length: 0,
-      width: 0,
-      foamType: "Open",
-      foamThickness: 6,
-      materialPrice: 1870,
-      materialMarkup: 80,
-      areaType: "General Area",
-      roofPitch: "4/12"
-    }
-  ]);
+  const [sprayAreas, setSprayAreas] = useState([{
+    length: 0,
+    width: 0,
+    foamType: "Open",
+    foamThickness: 6,
+    materialPrice: 1870,
+    materialMarkup: 80,
+    areaType: "General Area",
+    roofPitch: "4/12"
+  }]);
 
   const [actuals, setActuals] = useState({
     actualLaborHours: 0,
@@ -115,8 +113,35 @@ export default function SprayFoamEstimator() {
   };
 
   const removeArea = (index) => {
-    const updated = sprayAreas.filter((_, i) => i !== index);
-    setSprayAreas(updated);
+    setSprayAreas(sprayAreas.filter((_, i) => i !== index));
+  };
+
+  const saveEstimate = () => {
+    const json = JSON.stringify({ estimateName, globalInputs, sprayAreas, actuals }, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${estimateName || 'spray-foam-estimate'}.json`;
+    a.click();
+  };
+
+  const loadEstimate = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        setEstimateName(data.estimateName || "");
+        setGlobalInputs(data.globalInputs || {});
+        setSprayAreas(data.sprayAreas || []);
+        setActuals(data.actuals || {});
+      } catch (err) {
+        alert("Invalid JSON file.");
+      }
+    };
+    reader.readAsText(file);
   };
 
   const totalGallons = { open: 0, closed: 0 };
@@ -164,6 +189,13 @@ export default function SprayFoamEstimator() {
           onChange={(e) => setEstimateName(e.target.value)}
           className="border p-2 rounded w-1/2"
         />
+        <div className="flex space-x-2">
+          <button onClick={saveEstimate} className="bg-green-500 text-white px-4 py-2 rounded">Save</button>
+          <label className="bg-gray-500 text-white px-4 py-2 rounded cursor-pointer">
+            Load
+            <input type="file" accept=".json" onChange={loadEstimate} className="hidden" />
+          </label>
+        </div>
       </div>
 
       <div>
@@ -200,9 +232,22 @@ export default function SprayFoamEstimator() {
                           onChange={(e) => updateArea(index, key, e.target.value)}
                           className="w-full border p-2 rounded"
                         >
-                          {(key === "foamType" ? ["Open", "Closed"] : ["General Area", "Roof Deck", "Gable"]).map(opt => (
-                            <option key={opt} value={opt}>{opt}</option>
+                          {(key === "foamType"
+                            ? ["Open", "Closed"]
+                            : ["General Area", "Roof Deck", "Gable"]).map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
                           ))}
+                        </select>
+                      ) : key === "roofPitch" && area.areaType === "Roof Deck" ? (
+                        <select
+                          value={val}
+                          onChange={(e) => updateArea(index, key, e.target.value)}
+                          className="w-full border p-2 rounded"
+                        >
+                          {[...Array(12)].map((_, i) => {
+                            const pitch = `${i + 1}/12`;
+                            return <option key={pitch} value={pitch}>{pitch}</option>;
+                          })}
                         </select>
                       ) : (
                         <input
@@ -216,14 +261,7 @@ export default function SprayFoamEstimator() {
                   ) : null
                 ))}
               </div>
-              <MiniOutput
-                sqft={sqft}
-                gallons={gallons}
-                sets={sets}
-                baseMaterialCost={baseMaterialCost}
-                markupAmount={markupAmount}
-                totalCost={totalCost}
-              />
+              <MiniOutput {...calculateMaterialCost(area)} />
               <button onClick={() => removeArea(index)} className="mt-2 text-red-500">Remove Area</button>
             </div>
           );
@@ -248,7 +286,7 @@ export default function SprayFoamEstimator() {
           <div>Franchise Royalty: ${franchiseRoyalty.toFixed(2)}</div>
           <div>Brand Fund: ${brandFund.toFixed(2)}</div>
           <div>Sales Commission: ${salesCommission.toFixed(2)}</div>
-          <div>Total Fees: ${totalFees.toFixed(2)}</div>
+          <div className="font-bold">Total Fees: ${totalFees.toFixed(2)}</div>
           <div className={"font-bold " + marginColor}>Estimated Profit: ${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</div>
         </div>
       </div>
