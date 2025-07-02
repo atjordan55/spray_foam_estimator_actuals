@@ -1,3 +1,3 @@
 # Spray Foam Estimator
 
-This is a Create React App project for estimating spray foam insulation jobs.
+React app with Tailwind CSS and Create React App.
