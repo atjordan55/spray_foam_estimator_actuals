@@ -1,139 +1,296 @@
 import React, { useState } from "react";
 
+const calculatePitchFactor = (pitchStr) => {
+  const [rise, run] = pitchStr.split("/").map(Number);
+  return Math.sqrt(1 + Math.pow(rise / run, 2));
+};
+
+const calculateMaterialValues = (area) => {
+  let sqft = area.length * area.width;
+  if (area.areaType === "Gable") sqft = sqft / 2;
+  if (area.areaType === "Roof Deck") {
+    sqft *= calculatePitchFactor(area.roofPitch);
+  }
+  const ratio = area.foamType === "Open" ? 6 : 2;
+  const gallons = ((sqft * (area.foamThickness / ratio)) / 2000) * 55;
+  const sets = gallons / 55;
+  return { sqft, gallons, sets };
+};
+
+const calculateMaterialCost = (area) => {
+  const { sqft, gallons, sets } = calculateMaterialValues(area);
+  const baseMaterialCost = sets * area.materialPrice;
+  const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
+  const totalCost = baseMaterialCost + markupAmount;
+  return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost };
+};
+
+const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost }) => (
+  <div className="text-sm text-gray-700 pt-2">
+    SqFt: {sqft.toFixed(1)} | Gallons: {gallons.toFixed(1)} | Sets: {sets.toFixed(2)} |
+    Base Cost: ${baseMaterialCost.toFixed(2)} | Markup: ${markupAmount.toFixed(2)} |
+    <strong>Total Cost: ${totalCost.toFixed(2)}</strong>
+  </div>
+);
+
+const labelMap = {
+  manualLaborRate: "Manual Labor Rate",
+  laborHours: "Labor Hours",
+  laborMarkup: "Labor Markup",
+  travelDistance: "Travel Distance",
+  travelRate: "Travel Rate",
+  wasteDisposal: "Waste Disposal",
+  equipmentRental: "Equipment Rental",
+  length: "Length",
+  width: "Width",
+  foamType: "Foam Type",
+  foamThickness: "Foam Thickness",
+  materialPrice: "Material Price",
+  materialMarkup: "Material Markup",
+  areaType: "Area Type",
+  roofPitch: "Roof Pitch"
+};
+
 export default function SprayFoamEstimator() {
-  const [areaType, setAreaType] = useState("General Area");
-  const [areaSqFt, setAreaSqFt] = useState(0);
-  const [thickness, setThickness] = useState(0);
-  const [materialType, setMaterialType] = useState("Open Cell");
-  const [materialCostOpen, setMaterialCostOpen] = useState(1870);
-  const [materialCostClosed, setMaterialCostClosed] = useState(2470);
-  const [laborRate, setLaborRate] = useState(25);
-  const [sprayHours, setSprayHours] = useState(0);
-  const [prepHours, setPrepHours] = useState(0);
-  const [manualHours, setManualHours] = useState(0);
-  const [materialMarkup, setMaterialMarkup] = useState(0.5);
-  const [laborMarkup, setLaborMarkup] = useState(0.3);
-  const [discount, setDiscount] = useState(0);
-  const [travelMiles, setTravelMiles] = useState(0);
-  const [travelRate, setTravelRate] = useState(0.67);
-  const [equipmentRental, setEquipmentRental] = useState(0);
-  const [wasteDisposal, setWasteDisposal] = useState(0);
-  const [totalCost, setTotalCost] = useState(null);
+  const [estimateName, setEstimateName] = useState("");
+  const [globalInputs, setGlobalInputs] = useState({
+    manualLaborRate: 50,
+    laborHours: 0,
+    laborMarkup: 40,
+    travelDistance: 50,
+    travelRate: 0.68,
+    wasteDisposal: 50,
+    equipmentRental: 0
+  });
 
-  const handleEstimate = () => {
-    const baseCoverage = materialType === "Open Cell" ? 2000 : 2000;
-    const setGallons = 55;
-    const sprayGallons = (areaSqFt * thickness) / baseCoverage * setGallons;
-    const materialUnitCost = materialType === "Open Cell" ? materialCostOpen : materialCostClosed;
-    const materialRaw = (sprayGallons / setGallons) * materialUnitCost;
-    const materialWithMarkup = materialRaw * (1 + materialMarkup);
+  const [sprayAreas, setSprayAreas] = useState([
+    {
+      length: 0,
+      width: 0,
+      foamType: "Open",
+      foamThickness: 6,
+      materialPrice: 1870,
+      materialMarkup: 80,
+      areaType: "General Area",
+      roofPitch: "4/12"
+    }
+  ]);
 
-    const laborRaw = (sprayHours + prepHours + manualHours) * laborRate;
-    const laborWithMarkup = laborRaw * (1 + laborMarkup);
+  const [actuals, setActuals] = useState({
+    actualLaborHours: 0,
+    actualOpenGallons: 0,
+    actualClosedGallons: 0
+  });
 
-    const travelCost = travelMiles * travelRate;
-
-    const baseTotal = materialWithMarkup + laborWithMarkup + travelCost + Number(equipmentRental) + Number(wasteDisposal);
-    const discountedTotal = baseTotal * (1 - discount);
-
-    setTotalCost(discountedTotal.toFixed(2));
+  const handleGlobalChange = (key, value) => {
+    setGlobalInputs(prev => ({ ...prev, [key]: parseFloat(value) || 0 }));
   };
 
+  const handleActualsChange = (key, value) => {
+    setActuals(prev => ({ ...prev, [key]: parseFloat(value) || 0 }));
+  };
+
+  const updateArea = (index, key, value) => {
+    const updated = [...sprayAreas];
+    updated[index][key] = value;
+    if (key === "foamType") {
+      updated[index].materialMarkup = value === "Open" ? 80 : 75;
+      updated[index].foamThickness = value === "Open" ? 6 : 2;
+      updated[index].materialPrice = value === "Open" ? 1870 : 2470;
+    }
+    setSprayAreas(updated);
+  };
+
+  const addArea = () => {
+    setSprayAreas([...sprayAreas, {
+      length: 0,
+      width: 0,
+      foamType: "Open",
+      foamThickness: 6,
+      materialPrice: 1870,
+      materialMarkup: 80,
+      areaType: "General Area",
+      roofPitch: "4/12"
+    }]);
+  };
+
+  const removeArea = (index) => {
+    const updated = sprayAreas.filter((_, i) => i !== index);
+    setSprayAreas(updated);
+  };
+
+  const totalGallons = { open: 0, closed: 0 };
+  let baseMaterialCost = 0;
+
+  sprayAreas.forEach(area => {
+    const { gallons, baseMaterialCost: cost } = calculateMaterialCost(area);
+    if (area.foamType === "Open") totalGallons.open += gallons;
+    else totalGallons.closed += gallons;
+    baseMaterialCost += cost;
+  });
+
+  const fuelCost = globalInputs.travelDistance * globalInputs.travelRate;
+  const baseLaborCost = globalInputs.laborHours * globalInputs.manualLaborRate;
+  const totalBaseCost = baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
+  const materialMarkupAmount = baseMaterialCost * 0.75;
+  const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
+  const complexityCost = 0;
+  const discount = 0;
+  const customerCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount + complexityCost - discount;
+  const franchiseRoyalty = customerCost * 0.06;
+  const brandFund = customerCost * 0.01;
+  const salesCommission = customerCost * 0.03;
+  const totalFees = franchiseRoyalty + brandFund + salesCommission;
+  const estimatedProfit = customerCost - totalBaseCost - totalFees;
+  const profitMargin = (estimatedProfit / customerCost) * 100;
+
+  const actualMaterialCost = ((actuals.actualOpenGallons + actuals.actualClosedGallons) / 55) * 1870;
+  const actualLaborCost = actuals.actualLaborHours * globalInputs.manualLaborRate;
+  const actualBaseCost = actualMaterialCost + actualLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
+  const actualCustomerCost = customerCost;
+  const actualFees = actualCustomerCost * 0.10;
+  const actualProfit = actualCustomerCost - actualBaseCost - actualFees;
+  const actualMargin = (actualProfit / actualCustomerCost) * 100;
+  const marginColor = profitMargin < 25 ? "text-red-600" : profitMargin < 30 ? "text-yellow-600" : "text-green-600";
+  const actualMarginColor = actualMargin < 25 ? "text-red-600" : actualMargin < 30 ? "text-yellow-600" : "text-green-600";
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-5xl mx-auto bg-white shadow-2xl rounded-2xl p-8 space-y-8">
-        <h1 className="text-3xl font-bold text-center text-gray-800">Spray Foam Estimator</h1>
+    <div className="p-6 space-y-10">
+      <div className="flex justify-between items-center">
+        <input
+          type="text"
+          placeholder="Estimate Name"
+          value={estimateName}
+          onChange={(e) => setEstimateName(e.target.value)}
+          className="border p-2 rounded w-1/2"
+        />
+      </div>
 
-        {/* Global Inputs */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <h2 className="text-xl font-bold mb-2">Global Inputs</h2>
+        <div className="grid grid-cols-2 gap-4">
+          {Object.entries(globalInputs).map(([key, val]) => (
+            <div key={key}>
+              <label className="block text-sm font-medium mb-1">{labelMap[key] || key}</label>
+              <input
+                type="number"
+                value={val}
+                onChange={(e) => handleGlobalChange(key, e.target.value)}
+                className="w-full border p-2 rounded"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-xl font-bold mb-2">Spray Areas</h2>
+        {sprayAreas.map((area, index) => {
+          const { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost } = calculateMaterialCost(area);
+          return (
+            <div key={index} className="border p-4 rounded mb-4">
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(area).map(([key, val]) => (
+                  key !== "roofPitch" || area.areaType === "Roof Deck" ? (
+                    <div key={key}>
+                      <label className="block text-sm font-medium mb-1">{labelMap[key] || key}</label>
+                      {key === "foamType" || key === "areaType" ? (
+                        <select
+                          value={val}
+                          onChange={(e) => updateArea(index, key, e.target.value)}
+                          className="w-full border p-2 rounded"
+                        >
+                          {(key === "foamType" ? ["Open", "Closed"] : ["General Area", "Roof Deck", "Gable"]).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={typeof val === "number" ? "number" : "text"}
+                          value={val}
+                          onChange={(e) => updateArea(index, key, e.target.value)}
+                          className="w-full border p-2 rounded"
+                        />
+                      )}
+                    </div>
+                  ) : null
+                ))}
+              </div>
+              <MiniOutput
+                sqft={sqft}
+                gallons={gallons}
+                sets={sets}
+                baseMaterialCost={baseMaterialCost}
+                markupAmount={markupAmount}
+                totalCost={totalCost}
+              />
+              <button onClick={() => removeArea(index)} className="mt-2 text-red-500">Remove Area</button>
+            </div>
+          );
+        })}
+        <button onClick={addArea} className="bg-blue-500 text-white px-4 py-2 rounded">Add Area</button>
+      </div>
+
+      <div>
+        <h2 className="text-xl font-bold mb-2">Estimate Summary</h2>
+        <div className="text-sm space-y-1">
+          <div>Open Cell Gallons: {totalGallons.open.toFixed(1)}</div>
+          <div>Closed Cell Gallons: {totalGallons.closed.toFixed(1)}</div>
+          <div>Total Material Cost: ${baseMaterialCost.toFixed(2)}</div>
+          <div>Base Labor Cost: ${baseLaborCost.toFixed(2)}</div>
+          <div>Fuel Cost: ${fuelCost.toFixed(2)}</div>
+          <div>Waste Disposal: ${globalInputs.wasteDisposal.toFixed(2)}</div>
+          <div>Equipment Rental: ${globalInputs.equipmentRental.toFixed(2)}</div>
+          <div className="font-bold">Base Job Cost: ${totalBaseCost.toFixed(2)}</div>
+          <div>Material Markup: ${materialMarkupAmount.toFixed(2)}</div>
+          <div>Labor Markup: ${laborMarkupAmount.toFixed(2)}</div>
+          <div className="font-bold">Customer Charge: ${customerCost.toFixed(2)}</div>
+          <div>Franchise Royalty: ${franchiseRoyalty.toFixed(2)}</div>
+          <div>Brand Fund: ${brandFund.toFixed(2)}</div>
+          <div>Sales Commission: ${salesCommission.toFixed(2)}</div>
+          <div>Total Fees: ${totalFees.toFixed(2)}</div>
+          <div className={"font-bold " + marginColor}>Estimated Profit: ${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</div>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-xl font-bold mt-6 mb-2">Actual Results</h2>
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium">Material Type</label>
-            <select value={materialType} onChange={e => setMaterialType(e.target.value)} className="w-full p-2 border rounded-lg">
-              <option value="Open Cell">Open Cell</option>
-              <option value="Closed Cell">Closed Cell</option>
-            </select>
+            <label className="block text-sm font-medium mb-1">Actual Labor Hours</label>
+            <input
+              type="number"
+              value={actuals.actualLaborHours}
+              onChange={(e) => handleActualsChange("actualLaborHours", e.target.value)}
+              className="w-full border p-2 rounded"
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium">Material Cost (Open)</label>
-            <input type="number" value={materialCostOpen} onChange={e => setMaterialCostOpen(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
+            <label className="block text-sm font-medium mb-1">Actual Open Cell Gallons</label>
+            <input
+              type="number"
+              value={actuals.actualOpenGallons}
+              onChange={(e) => handleActualsChange("actualOpenGallons", e.target.value)}
+              className="w-full border p-2 rounded"
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium">Material Cost (Closed)</label>
-            <input type="number" value={materialCostClosed} onChange={e => setMaterialCostClosed(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Material Markup (%)</label>
-            <input type="number" value={materialMarkup} onChange={e => setMaterialMarkup(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Labor Markup (%)</label>
-            <input type="number" value={laborMarkup} onChange={e => setLaborMarkup(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Discount (%)</label>
-            <input type="number" value={discount} onChange={e => setDiscount(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
+            <label className="block text-sm font-medium mb-1">Actual Closed Cell Gallons</label>
+            <input
+              type="number"
+              value={actuals.actualClosedGallons}
+              onChange={(e) => handleActualsChange("actualClosedGallons", e.target.value)}
+              className="w-full border p-2 rounded"
+            />
           </div>
         </div>
-
-        {/* Spray Area */}
-        <h2 className="text-xl font-semibold text-gray-700 pt-4">Spray Area</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium">Area Type</label>
-            <input type="text" value={areaType} onChange={e => setAreaType(e.target.value)} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Square Footage</label>
-            <input type="number" value={areaSqFt} onChange={e => setAreaSqFt(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Thickness (inches)</label>
-            <input type="number" value={thickness} onChange={e => setThickness(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
+        <div className="mt-4 text-sm">
+          <div>Actual Material Cost: ${actualMaterialCost.toFixed(2)}</div>
+          <div>Actual Labor Cost: ${actualLaborCost.toFixed(2)}</div>
+          <div className="font-bold">Actual Base Job Cost: ${actualBaseCost.toFixed(2)}</div>
+          <div>Total Fees: ${actualFees.toFixed(2)}</div>
+          <div className={"font-bold " + actualMarginColor}>Actual Profit: ${actualProfit.toFixed(2)} ({actualMargin.toFixed(1)}%)</div>
         </div>
-
-        {/* Labor + Other */}
-        <h2 className="text-xl font-semibold text-gray-700 pt-4">Labor and Other Costs</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <label className="block text-sm font-medium">Spray Hours</label>
-            <input type="number" value={sprayHours} onChange={e => setSprayHours(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Prep Hours</label>
-            <input type="number" value={prepHours} onChange={e => setPrepHours(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Manual Hours</label>
-            <input type="number" value={manualHours} onChange={e => setManualHours(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Labor Rate ($/hr)</label>
-            <input type="number" value={laborRate} onChange={e => setLaborRate(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Travel (miles)</label>
-            <input type="number" value={travelMiles} onChange={e => setTravelMiles(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Equipment Rental ($)</label>
-            <input type="number" value={equipmentRental} onChange={e => setEquipmentRental(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Waste Disposal ($)</label>
-            <input type="number" value={wasteDisposal} onChange={e => setWasteDisposal(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
-          </div>
-        </div>
-
-        <button onClick={handleEstimate} className="w-full mt-6 bg-blue-600 text-white text-lg font-semibold py-3 rounded-xl hover:bg-blue-700 transition">
-          Estimate Job Cost
-        </button>
-
-        {totalCost !== null && (
-          <div className="mt-6 bg-green-100 text-green-800 text-lg text-center py-4 rounded-xl">
-            <strong>Total Estimated Cost:</strong> ${totalCost}
-          </div>
-        )}
       </div>
     </div>
   );
