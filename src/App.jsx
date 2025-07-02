@@ -1,5 +1,9 @@
-import React, { useState } from "react";
-/* Full App.jsx code would be inserted here in actual use. Skipping for brevity due to size. */ 
+import React from "react";
+
 export default function SprayFoamEstimator() {
-  return <div>Placeholder for actual component</div>;
+  return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <h1 className="text-4xl font-bold text-blue-600">Tailwind is Working!</h1>
+    </div>
+  );
 }
