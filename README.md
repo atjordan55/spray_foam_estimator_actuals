@@ -1,15 +1,19 @@
-# Spray Foam Estimator (Create React App)
+# Spray Foam Estimator
 
-This project is a full estimator for spray foam insulation work. It includes inputs for global labor/material costs, multiple spray areas, and both estimated and actual results for performance tracking.
+This is a Create React App implementation of the Spray Foam Estimator.
 
-## Scripts
-
-- `npm start`: Runs the app in development mode.
-- `npm run build`: Builds the app for production.
-
-## Setup
+## Installation
 
 ```bash
 npm install
+```
+
+## Running Locally
+
+```bash
 npm start
 ```
+
+## Deployment
+
+This app is ready to deploy using Vercel with the "Create React App" framework preset.
