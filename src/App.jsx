@@ -145,13 +145,19 @@ export default function SprayFoamEstimator() {
   };
 
   const totalGallons = { open: 0, closed: 0 };
+  const totalSets = { open: 0, closed: 0 };
   let baseMaterialCost = 0;
   let materialMarkupAmount = 0;
 
   sprayAreas.forEach(area => {
-    const { gallons, baseMaterialCost: cost, markupAmount } = calculateMaterialCost(area);
-    if (area.foamType === "Open") totalGallons.open += gallons;
-    else totalGallons.closed += gallons;
+    const { gallons, sets, baseMaterialCost: cost, markupAmount } = calculateMaterialCost(area);
+    if (area.foamType === "Open") {
+      totalGallons.open += gallons;
+      totalSets.open += sets;
+    } else {
+      totalGallons.closed += gallons;
+      totalSets.closed += sets;
+    }
     baseMaterialCost += cost;
     materialMarkupAmount += markupAmount;
   });
@@ -275,8 +281,8 @@ export default function SprayFoamEstimator() {
       <div>
         <h2 className="text-xl font-bold mb-2">Estimate Summary</h2>
         <div className="text-sm space-y-1">
-          <div>Open Cell Gallons: {totalGallons.open.toFixed(1)}</div>
-          <div>Closed Cell Gallons: {totalGallons.closed.toFixed(1)}</div>
+          <div>Open Cell: {totalGallons.open.toFixed(1)} gallons ({totalSets.open.toFixed(2)} sets)</div>
+          <div>Closed Cell: {totalGallons.closed.toFixed(1)} gallons ({totalSets.closed.toFixed(2)} sets)</div>
           <div>Total Material Cost: ${baseMaterialCost.toFixed(2)}</div>
           <div>Base Labor Cost: ${baseLaborCost.toFixed(2)}</div>
           <div>Fuel Cost: ${fuelCost.toFixed(2)}</div>
