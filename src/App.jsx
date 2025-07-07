@@ -1,5 +1,4 @@
-870 : 2470;
-    }
+}
     setSprayAreas(updated);
   };
 
