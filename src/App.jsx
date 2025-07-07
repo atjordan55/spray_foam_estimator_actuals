@@ -1,4 +1,101 @@
-}
+
+import React, { useState } from 'react';
+
+const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost }) => (
+  <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
+    <div>Sq Ft: {sqft.toFixed(0)}</div>
+    <div>Gallons: {gallons.toFixed(1)}</div>
+    <div>Sets: {sets.toFixed(2)}</div>
+    <div>Base Material: ${baseMaterialCost.toFixed(2)}</div>
+    <div>Markup: ${markupAmount.toFixed(2)}</div>
+    <div>Total: ${totalCost.toFixed(2)}</div>
+  </div>
+);
+
+export default function SprayFoamEstimator() {
+  const [estimateName, setEstimateName] = useState("");
+  const [globalInputs, setGlobalInputs] = useState({
+    laborHours: 0,
+    manualLaborRate: 50,
+    laborMarkup: 50,
+    travelDistance: 0,
+    travelRate: 0.655,
+    wasteDisposal: 0,
+    equipmentRental: 0
+  });
+
+  const [sprayAreas, setSprayAreas] = useState([{
+    length: 0,
+    width: 0,
+    foamType: "Open",
+    foamThickness: 6,
+    materialPrice: 1870,
+    materialMarkup: 80,
+    areaType: "General Area",
+    roofPitch: "4/12"
+  }]);
+
+  const [actuals, setActuals] = useState({
+    actualLaborHours: 0,
+    actualOpenGallons: 0,
+    actualClosedGallons: 0
+  });
+
+  const labelMap = {
+    laborHours: "Labor Hours",
+    manualLaborRate: "Labor Rate ($/hr)",
+    laborMarkup: "Labor Markup (%)",
+    travelDistance: "Travel Distance (miles)",
+    travelRate: "Travel Rate ($/mile)",
+    wasteDisposal: "Waste Disposal ($)",
+    equipmentRental: "Equipment Rental ($)",
+    length: "Length (ft)",
+    width: "Width (ft)",
+    foamType: "Foam Type",
+    foamThickness: "Foam Thickness (inches)",
+    materialPrice: "Material Price ($/55gal drum)",
+    materialMarkup: "Material Markup (%)",
+    areaType: "Area Type",
+    roofPitch: "Roof Pitch"
+  };
+
+  const calculateMaterialCost = (area) => {
+    let sqft = area.length * area.width;
+    
+    if (area.areaType === "Roof Deck") {
+      const [rise, run] = area.roofPitch.split("/").map(Number);
+      const pitchMultiplier = Math.sqrt(Math.pow(rise, 2) + Math.pow(run, 2)) / run;
+      sqft *= pitchMultiplier;
+    } else if (area.areaType === "Gable") {
+      sqft = 0.5 * area.length * area.width;
+    }
+
+    const boardFeetPerInch = sqft;
+    const totalBoardFeet = boardFeetPerInch * area.foamThickness;
+    const gallons = area.foamType === "Open" ? totalBoardFeet / 330 : totalBoardFeet / 165;
+    const sets = gallons / 55;
+    const baseMaterialCost = sets * area.materialPrice;
+    const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
+    const totalCost = baseMaterialCost + markupAmount;
+
+    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost };
+  };
+
+  const handleGlobalChange = (key, value) => {
+    setGlobalInputs({ ...globalInputs, [key]: parseFloat(value) || 0 });
+  };
+
+  const handleActualsChange = (key, value) => {
+    setActuals({ ...actuals, [key]: parseFloat(value) || 0 });
+  };
+
+  const updateArea = (index, key, value) => {
+    const updated = [...sprayAreas];
+    if (key === "foamType" || key === "areaType" || key === "roofPitch") {
+      updated[index][key] = value;
+    } else {
+      updated[index][key] = parseFloat(value) || 0;
+    }
     setSprayAreas(updated);
   };
 
