@@ -283,8 +283,8 @@ export default function SprayFoamEstimator() {
         <div className="text-sm space-y-1">
           <div>Open Cell: {totalGallons.open.toFixed(1)} gallons ({totalSets.open.toFixed(2)} sets)</div>
           <div>Closed Cell: {totalGallons.closed.toFixed(1)} gallons ({totalSets.closed.toFixed(2)} sets)</div>
-          <div>Total Material Cost: ${baseMaterialCost.toFixed(2)}</div>
-          <div>Base Labor Cost: ${baseLaborCost.toFixed(2)}</div>
+          <div className="text-blue-600">Base Material Cost: ${baseMaterialCost.toFixed(2)}</div>
+          <div className="text-blue-600">Base Labor Cost: ${baseLaborCost.toFixed(2)}</div>
           <div>Fuel Cost: ${fuelCost.toFixed(2)}</div>
           <div>Waste Disposal: ${globalInputs.wasteDisposal.toFixed(2)}</div>
           <div>Equipment Rental: ${globalInputs.equipmentRental.toFixed(2)}</div>
@@ -332,9 +332,10 @@ export default function SprayFoamEstimator() {
           </div>
         </div>
         <div className="mt-4 text-sm">
-          <div>Actual Material Cost: ${actualMaterialCost.toFixed(2)}</div>
-          <div>Actual Labor Cost: ${actualLaborCost.toFixed(2)}</div>
+          <div className="font-bold text-blue-600">Actual Material Cost: ${actualMaterialCost.toFixed(2)}</div>
+          <div className="font-bold text-blue-600">Actual Labor Cost: ${actualLaborCost.toFixed(2)}</div>
           <div className="font-bold">Actual Base Job Cost: ${actualBaseCost.toFixed(2)}</div>
+          <div className="font-bold">Customer Charge: ${customerCost.toFixed(2)}</div>
           <div>Total Fees: ${actualFees.toFixed(2)}</div>
           <div className={`font-bold ${actualMarginColor}`}>Actual Profit: ${actualProfit.toFixed(2)} ({actualMargin.toFixed(1)}%)</div>
         </div>
