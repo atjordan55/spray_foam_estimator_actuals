@@ -17,9 +17,9 @@ export default function SprayFoamEstimator() {
   const [globalInputs, setGlobalInputs] = useState({
     laborHours: 0,
     manualLaborRate: 50,
-    laborMarkup: 50,
+    laborMarkup: 40,
     travelDistance: 0,
-    travelRate: 0.655,
+    travelRate: 0.68,
     wasteDisposal: 0,
     equipmentRental: 0,
     includeFranchiseRoyalty: true,
@@ -99,6 +99,17 @@ export default function SprayFoamEstimator() {
     const updated = [...sprayAreas];
     if (key === "foamType" || key === "areaType" || key === "roofPitch") {
       updated[index][key] = value;
+      
+      // Auto-configure foam thickness and material price based on foam type
+      if (key === "foamType") {
+        if (value === "Open") {
+          updated[index].foamThickness = 6;
+          updated[index].materialPrice = 1870;
+        } else if (value === "Closed") {
+          updated[index].foamThickness = 2;
+          updated[index].materialPrice = 2470;
+        }
+      }
     } else {
       updated[index][key] = parseFloat(value) || 0;
     }
