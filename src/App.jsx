@@ -80,7 +80,7 @@ export default function SprayFoamEstimator() {
 
     const boardFeetPerInch = sqft;
     const totalBoardFeet = boardFeetPerInch * area.foamThickness;
-    const gallons = area.foamType === "Open" ? totalBoardFeet / 330 : totalBoardFeet / 165;
+    const gallons = area.foamType === "Open" ? totalBoardFeet / 291 : totalBoardFeet / 165;
     const sets = gallons / 55;
     const baseMaterialCost = sets * area.materialPrice;
     const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
