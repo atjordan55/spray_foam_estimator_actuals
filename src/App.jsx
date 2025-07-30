@@ -100,14 +100,16 @@ export default function SprayFoamEstimator() {
     if (key === "foamType" || key === "areaType" || key === "roofPitch") {
       updated[index][key] = value;
       
-      // Auto-configure foam thickness and material price based on foam type
+      // Auto-configure foam thickness, material price, and markup based on foam type
       if (key === "foamType") {
         if (value === "Open") {
           updated[index].foamThickness = 6;
           updated[index].materialPrice = 1870;
+          updated[index].materialMarkup = 80;
         } else if (value === "Closed") {
           updated[index].foamThickness = 2;
           updated[index].materialPrice = 2470;
+          updated[index].materialMarkup = 75;
         }
       }
     } else {
