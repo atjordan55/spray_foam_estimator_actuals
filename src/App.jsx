@@ -195,7 +195,7 @@ export default function SprayFoamEstimator() {
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
   const profitMargin = (estimatedProfit / customerCost) * 100;
 
-  const actualMaterialCost = ((actuals.actualOpenGallons + actuals.actualClosedGallons) / 55) * 1870;
+  const actualMaterialCost = (actuals.actualOpenGallons / 55) * 1870 + (actuals.actualClosedGallons / 55) * 2470;
   const actualLaborCost = actuals.actualLaborHours * globalInputs.manualLaborRate;
   const actualBaseCost = actualMaterialCost + actualLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const actualCustomerCost = customerCost;
