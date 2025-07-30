@@ -21,7 +21,10 @@ export default function SprayFoamEstimator() {
     travelDistance: 0,
     travelRate: 0.655,
     wasteDisposal: 0,
-    equipmentRental: 0
+    equipmentRental: 0,
+    includeFranchiseRoyalty: true,
+    includeBrandFund: true,
+    includeSalesCommission: true
   });
 
   const [sprayAreas, setSprayAreas] = useState([{
@@ -49,6 +52,9 @@ export default function SprayFoamEstimator() {
     travelRate: "Travel Rate ($/mile)",
     wasteDisposal: "Waste Disposal ($)",
     equipmentRental: "Equipment Rental ($)",
+    includeFranchiseRoyalty: "Include Franchise Royalty",
+    includeBrandFund: "Include Brand Fund",
+    includeSalesCommission: "Include Sales Commission",
     length: "Length (ft)",
     width: "Width (ft)",
     foamType: "Foam Type",
@@ -167,9 +173,9 @@ export default function SprayFoamEstimator() {
   const totalBaseCost = baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
   const customerCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
-  const franchiseRoyalty = customerCost * 0.06;
-  const brandFund = customerCost * 0.01;
-  const salesCommission = customerCost * 0.03;
+  const franchiseRoyalty = globalInputs.includeFranchiseRoyalty ? customerCost * 0.06 : 0;
+  const brandFund = globalInputs.includeBrandFund ? customerCost * 0.01 : 0;
+  const salesCommission = globalInputs.includeSalesCommission ? customerCost * 0.03 : 0;
   const totalFees = franchiseRoyalty + brandFund + salesCommission;
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
   const profitMargin = (estimatedProfit / customerCost) * 100;
@@ -208,12 +214,21 @@ export default function SprayFoamEstimator() {
           {Object.entries(globalInputs).map(([key, val]) => (
             <div key={key}>
               <label className="block text-sm font-medium mb-1">{labelMap[key] || key}</label>
-              <input
-                type="number"
-                value={val}
-                onChange={(e) => handleGlobalChange(key, e.target.value)}
-                className="w-full border p-2 rounded"
-              />
+              {key.startsWith('include') ? (
+                <input
+                  type="checkbox"
+                  checked={val}
+                  onChange={(e) => setGlobalInputs({ ...globalInputs, [key]: e.target.checked })}
+                  className="h-4 w-4"
+                />
+              ) : (
+                <input
+                  type="number"
+                  value={val}
+                  onChange={(e) => handleGlobalChange(key, e.target.value)}
+                  className="w-full border p-2 rounded"
+                />
+              )}
             </div>
           ))}
         </div>
@@ -292,9 +307,9 @@ export default function SprayFoamEstimator() {
           <div>Material Markup: ${materialMarkupAmount.toFixed(2)}</div>
           <div>Labor Markup: ${laborMarkupAmount.toFixed(2)}</div>
           <div className="font-bold">Customer Charge: ${customerCost.toFixed(2)}</div>
-          <div>Franchise Royalty: ${franchiseRoyalty.toFixed(2)}</div>
-          <div>Brand Fund: ${brandFund.toFixed(2)}</div>
-          <div>Sales Commission: ${salesCommission.toFixed(2)}</div>
+          {globalInputs.includeFranchiseRoyalty && <div>Franchise Royalty: ${franchiseRoyalty.toFixed(2)}</div>}
+          {globalInputs.includeBrandFund && <div>Brand Fund: ${brandFund.toFixed(2)}</div>}
+          {globalInputs.includeSalesCommission && <div>Sales Commission: ${salesCommission.toFixed(2)}</div>}
           <div className="font-bold">Total Fees: ${totalFees.toFixed(2)}</div>
           <div className={`font-bold ${marginColor}`}>Estimated Profit: ${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</div>
         </div>
