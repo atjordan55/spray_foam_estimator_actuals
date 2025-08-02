@@ -20,9 +20,9 @@ export default function SprayFoamEstimator() {
     laborHours: 0,
     manualLaborRate: 50,
     laborMarkup: 40,
-    travelDistance: 0,
+    travelDistance: 50,
     travelRate: 0.68,
-    wasteDisposal: 0,
+    wasteDisposal: 50,
     equipmentRental: 0,
     includeFranchiseRoyalty: true,
     includeBrandFund: true,
@@ -35,7 +35,7 @@ export default function SprayFoamEstimator() {
     foamType: "Open",
     foamThickness: 6,
     materialPrice: 1870,
-    materialMarkup: 80,
+    materialMarkup: 50,
     areaType: "General Area",
     roofPitch: "4/12",
     boardFeetPerSet: 14000
@@ -110,12 +110,12 @@ export default function SprayFoamEstimator() {
         if (value === "Open") {
           updated[index].foamThickness = 6;
           updated[index].materialPrice = 1870;
-          updated[index].materialMarkup = 80;
+          updated[index].materialMarkup = 50;
           updated[index].boardFeetPerSet = 14000;
         } else if (value === "Closed") {
           updated[index].foamThickness = 2;
           updated[index].materialPrice = 2470;
-          updated[index].materialMarkup = 75;
+          updated[index].materialMarkup = 40;
           updated[index].boardFeetPerSet = 4000;
         }
       }
@@ -132,7 +132,7 @@ export default function SprayFoamEstimator() {
       foamType: "Open",
       foamThickness: 6,
       materialPrice: 1870,
-      materialMarkup: 80,
+      materialMarkup: 50,
       areaType: "General Area",
       roofPitch: "4/12",
       boardFeetPerSet: 14000
@@ -205,7 +205,7 @@ export default function SprayFoamEstimator() {
   const actualLaborCost = actuals.actualLaborHours * globalInputs.manualLaborRate;
   const actualBaseCost = actualMaterialCost + actualLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const actualCustomerCost = customerCost;
-  const actualFees = actualCustomerCost * 0.10;
+  const actualFees = totalFees;
   const actualProfit = actualCustomerCost - actualBaseCost - actualFees;
   const actualMargin = (actualProfit / actualCustomerCost) * 100;
   const marginColor = profitMargin < 25 ? "text-red-600" : profitMargin < 30 ? "text-yellow-600" : "text-green-600";
