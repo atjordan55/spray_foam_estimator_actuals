@@ -35,7 +35,7 @@ export default function SprayFoamEstimator() {
     foamType: "Open",
     foamThickness: 6,
     materialPrice: 1870,
-    materialMarkup: 70,
+    materialMarkup: 75,
     areaType: "General Area",
     roofPitch: "4/12",
     boardFeetPerSet: 14000
@@ -110,7 +110,7 @@ export default function SprayFoamEstimator() {
         if (value === "Open") {
           updated[index].foamThickness = 6;
           updated[index].materialPrice = 1870;
-          updated[index].materialMarkup = 70;
+          updated[index].materialMarkup = 75;
           updated[index].boardFeetPerSet = 14000;
         } else if (value === "Closed") {
           updated[index].foamThickness = 2;
@@ -132,7 +132,7 @@ export default function SprayFoamEstimator() {
       foamType: "Open",
       foamThickness: 6,
       materialPrice: 1870,
-      materialMarkup: 70,
+      materialMarkup: 75,
       areaType: "General Area",
       roofPitch: "4/12",
       boardFeetPerSet: 14000
