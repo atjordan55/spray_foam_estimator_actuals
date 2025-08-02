@@ -62,7 +62,7 @@ export default function SprayFoamEstimator() {
     width: "Width (ft)",
     foamType: "Foam Type",
     foamThickness: "Foam Thickness (inches)",
-    materialPrice: "Material Wholesale Price ($/55gal drum)",
+    materialPrice: "Foam Price per Set",
     materialMarkup: "Material Markup (%)",
     areaType: "Area Type",
     roofPitch: "Roof Pitch",
