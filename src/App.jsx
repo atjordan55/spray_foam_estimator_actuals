@@ -7,7 +7,7 @@ const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, total
       <div><span className="font-medium">Sq Ft:</span> {sqft.toFixed(0)}</div>
       <div><span className="font-medium">Gallons:</span> {gallons.toFixed(1)}</div>
       <div><span className="font-medium">Sets:</span> {sets.toFixed(2)}</div>
-      <div><span className="font-medium">Base:</span> ${baseMaterialCost.toFixed(2)}</div>
+      <div><span className="font-medium">Base Cost:</span> ${baseMaterialCost.toFixed(2)}</div>
       <div><span className="font-medium">Markup:</span> ${markupAmount.toFixed(2)}</div>
       <div><span className="font-medium">Total:</span> ${totalCost.toFixed(2)}</div>
     </div>
@@ -84,10 +84,10 @@ export default function SprayFoamEstimator() {
     const totalBoardFeet = boardFeetPerInch * area.foamThickness;
     const sets = totalBoardFeet / area.boardFeetPerSet;
     const gallons = sets * 55;
-    const baseMaterialCost = sets * area.materialPrice;
+    const materialCost = area.materialPrice * 1.20;
+    const baseMaterialCost = sets * materialCost;
     const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
     const totalCost = baseMaterialCost + markupAmount;
-    const materialCost = area.materialPrice * 1.20;
 
     return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost };
   };
@@ -201,7 +201,7 @@ export default function SprayFoamEstimator() {
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
   const profitMargin = (estimatedProfit / customerCost) * 100;
 
-  const actualMaterialCost = (actuals.actualOpenGallons / 55) * 1870 + (actuals.actualClosedGallons / 55) * 2470;
+  const actualMaterialCost = (actuals.actualOpenGallons / 55) * (1870 * 1.20) + (actuals.actualClosedGallons / 55) * (2470 * 1.20);
   const actualLaborCost = actuals.actualLaborHours * globalInputs.manualLaborRate;
   const actualBaseCost = actualMaterialCost + actualLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const actualCustomerCost = customerCost;
