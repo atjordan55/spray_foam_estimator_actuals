@@ -37,7 +37,8 @@ export default function SprayFoamEstimator() {
     materialPrice: 1870,
     materialMarkup: 80,
     areaType: "General Area",
-    roofPitch: "4/12"
+    roofPitch: "4/12",
+    boardFeetPerSet: 14000
   }]);
 
   const [actuals, setActuals] = useState({
@@ -64,7 +65,8 @@ export default function SprayFoamEstimator() {
     materialPrice: "Material Price ($/55gal drum)",
     materialMarkup: "Material Markup (%)",
     areaType: "Area Type",
-    roofPitch: "Roof Pitch"
+    roofPitch: "Roof Pitch",
+    boardFeetPerSet: "Board Feet per Set"
   };
 
   const calculateMaterialCost = (area) => {
@@ -80,8 +82,8 @@ export default function SprayFoamEstimator() {
 
     const boardFeetPerInch = sqft;
     const totalBoardFeet = boardFeetPerInch * area.foamThickness;
-    const gallons = area.foamType === "Open" ? totalBoardFeet / 291 : totalBoardFeet / 165;
-    const sets = gallons / 55;
+    const sets = totalBoardFeet / area.boardFeetPerSet;
+    const gallons = sets * 55;
     const baseMaterialCost = sets * area.materialPrice;
     const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
     const totalCost = baseMaterialCost + markupAmount;
@@ -102,16 +104,18 @@ export default function SprayFoamEstimator() {
     if (key === "foamType" || key === "areaType" || key === "roofPitch") {
       updated[index][key] = value;
       
-      // Auto-configure foam thickness, material price, and markup based on foam type
+      // Auto-configure foam thickness, material price, markup, and board feet per set based on foam type
       if (key === "foamType") {
         if (value === "Open") {
           updated[index].foamThickness = 6;
           updated[index].materialPrice = 1870;
           updated[index].materialMarkup = 80;
+          updated[index].boardFeetPerSet = 14000;
         } else if (value === "Closed") {
           updated[index].foamThickness = 2;
           updated[index].materialPrice = 2470;
           updated[index].materialMarkup = 75;
+          updated[index].boardFeetPerSet = 4000;
         }
       }
     } else {
@@ -129,7 +133,8 @@ export default function SprayFoamEstimator() {
       materialPrice: 1870,
       materialMarkup: 80,
       areaType: "General Area",
-      roofPitch: "4/12"
+      roofPitch: "4/12",
+      boardFeetPerSet: 14000
     }]);
   };
 
