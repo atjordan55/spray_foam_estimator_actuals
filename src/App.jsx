@@ -83,7 +83,7 @@ export default function SprayFoamEstimator() {
     const boardFeetPerInch = sqft;
     const totalBoardFeet = boardFeetPerInch * area.foamThickness;
     const sets = totalBoardFeet / area.boardFeetPerSet;
-    const gallons = sets * 55;
+    const gallons = sets * 100;
     const materialCost = area.materialPrice * 1.20;
     const baseMaterialCost = sets * materialCost;
     const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
@@ -201,7 +201,7 @@ export default function SprayFoamEstimator() {
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
   const profitMargin = (estimatedProfit / customerCost) * 100;
 
-  const actualMaterialCost = (actuals.actualOpenGallons / 55) * (1870 * 1.20) + (actuals.actualClosedGallons / 55) * (2470 * 1.20);
+  const actualMaterialCost = (actuals.actualOpenGallons / 100) * (1870 * 1.20) + (actuals.actualClosedGallons / 100) * (2470 * 1.20);
   const actualLaborCost = actuals.actualLaborHours * globalInputs.manualLaborRate;
   const actualBaseCost = actualMaterialCost + actualLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const actualCustomerCost = customerCost;
