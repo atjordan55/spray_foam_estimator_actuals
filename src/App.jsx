@@ -87,7 +87,7 @@ export default function SprayFoamEstimator() {
     const baseMaterialCost = sets * area.materialPrice;
     const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
     const totalCost = baseMaterialCost + markupAmount;
-    const materialCost = area.materialPrice * 0.2;
+    const materialCost = area.materialPrice * 1.20;
 
     return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost };
   };
@@ -339,7 +339,7 @@ export default function SprayFoamEstimator() {
                           <input
                             type="number"
                             step="0.01"
-                            value={(area.materialPrice * 0.2).toFixed(2)}
+                            value={(area.materialPrice * 1.20).toFixed(2)}
                             readOnly
                             className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                           />
