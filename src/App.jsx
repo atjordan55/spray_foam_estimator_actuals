@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 
 const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost }) => (
@@ -49,8 +48,9 @@ export default function SprayFoamEstimator() {
 
   const labelMap = {
     laborHours: "Labor Hours",
-    manualLaborRate: "Labor Rate ($/hr)",
+    manualLaborRate: "Actual Labor Rate ($/hr)",
     laborMarkup: "Labor Markup (%)",
+    chargedLaborRate: "Charged Labor Rate ($/hr)",
     travelDistance: "Travel Distance (miles)",
     travelRate: "Travel Rate ($/mile)",
     wasteDisposal: "Waste Disposal ($)",
@@ -213,6 +213,9 @@ export default function SprayFoamEstimator() {
 
   const pitchOptions = Array.from({ length: 12 }, (_, i) => `${i + 1}/12`);
 
+  // Calculate the charged labor rate
+  const chargedLaborRate = globalInputs.manualLaborRate * (1 + (globalInputs.laborMarkup / 100));
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto max-w-7xl p-6">
@@ -248,30 +251,66 @@ export default function SprayFoamEstimator() {
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <h2 className="text-xl font-bold text-gray-900 mb-6">Project Parameters</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(globalInputs).map(([key, val]) => (
-                  <div key={key}>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">{labelMap[key] || key}</label>
-                    {key.startsWith('include') ? (
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={val}
-                          onChange={(e) => setGlobalInputs({ ...globalInputs, [key]: e.target.checked })}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-2 text-sm text-gray-600">Include in calculation</span>
+                {Object.entries(globalInputs).map(([key, val]) => {
+                  if (key === 'salesCommission') {
+                      return (
+                          <div key={key}>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">{labelMap[key] || key}</label>
+                              <input
+                                  type="number"
+                                  step="0.01"
+                                  value={val}
+                                  onChange={(e) => handleGlobalChange(key, e.target.value)}
+                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                          </div>
+                      );
+                  }
+                  return (
+                      <div key={key}>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">{labelMap[key] || key}</label>
+                          {key.startsWith('include') ? (
+                              <div className="flex items-center">
+                                  <input
+                                      type="checkbox"
+                                      checked={val}
+                                      onChange={(e) => setGlobalInputs({ ...globalInputs, [key]: e.target.checked })}
+                                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                  />
+                                  <span className="ml-2 text-sm text-gray-600">Include in calculation</span>
+                              </div>
+                          ) : key === 'laborMarkup' ? (
+                              <>
+                                  <input
+                                      type="number"
+                                      step="0.01"
+                                      value={val}
+                                      onChange={(e) => handleGlobalChange(key, e.target.value)}
+                                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                  <div className="mt-4">
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">{labelMap['chargedLaborRate']}</label>
+                                      <input
+                                          type="number"
+                                          step="0.01"
+                                          value={chargedLaborRate.toFixed(2)}
+                                          readOnly
+                                          className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
+                                      />
+                                  </div>
+                              </>
+                          ) : (
+                              <input
+                                  type="number"
+                                  step="0.01"
+                                  value={val}
+                                  onChange={(e) => handleGlobalChange(key, e.target.value)}
+                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                          )}
                       </div>
-                    ) : (
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={val}
-                        onChange={(e) => handleGlobalChange(key, e.target.value)}
-                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
