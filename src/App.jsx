@@ -344,6 +344,16 @@ export default function SprayFoamEstimator() {
                             className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                           />
                         </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Price per Sq Ft</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={(totalCost / sqft).toFixed(2)}
+                            readOnly
+                            className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
+                          />
+                        </div>
                       </div>
                       <MiniOutput
                         sqft={sqft}
