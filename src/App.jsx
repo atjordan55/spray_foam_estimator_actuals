@@ -64,7 +64,7 @@ export default function SprayFoamEstimator() {
     width: "Width (ft)",
     foamType: "Foam Type",
     foamThickness: "Foam Thickness (inches)",
-    materialPrice: "Foam Price per Set",
+    materialPrice: "Foam Cost per Set",
     materialMarkup: "Material Markup (%)",
     areaType: "Area Type",
     roofPitch: "Roof Pitch",
@@ -376,7 +376,7 @@ export default function SprayFoamEstimator() {
                           );
                         })}
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Material Cost</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Material Cost per Set</label>
                           <input
                             type="number"
                             step="0.01"
@@ -386,11 +386,21 @@ export default function SprayFoamEstimator() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Price per Sq Ft</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">$/Per Set</label>
                           <input
                             type="number"
                             step="0.01"
-                            value={(totalCost / sqft).toFixed(2)}
+                            value={(area.materialPrice * 1.20 * (1 + area.materialMarkup / 100)).toFixed(2)}
+                            readOnly
+                            className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">$/Sq Ft</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={sqft > 0 ? (totalCost / sqft).toFixed(2) : "0.00"}
                             readOnly
                             className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                           />
