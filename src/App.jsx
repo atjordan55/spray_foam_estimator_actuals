@@ -24,7 +24,6 @@ export default function SprayFoamEstimator() {
     travelRate: 0.68,
     wasteDisposal: 50,
     equipmentRental: 0,
-    salesCommission: 3,
     includeFranchiseRoyalty: true,
     includeBrandFund: true,
     includeSalesCommission: true
@@ -56,7 +55,6 @@ export default function SprayFoamEstimator() {
     travelRate: "Travel Rate ($/mile)",
     wasteDisposal: "Waste Disposal ($)",
     equipmentRental: "Equipment Rental ($)",
-    salesCommission: "Sales Commission (%)",
     includeFranchiseRoyalty: "Include Franchise Royalty",
     includeBrandFund: "Include Brand Fund",
     includeSalesCommission: "Include Sales Commission",
@@ -198,7 +196,7 @@ export default function SprayFoamEstimator() {
   const customerCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
   const franchiseRoyalty = globalInputs.includeFranchiseRoyalty ? customerCost * 0.06 : 0;
   const brandFund = globalInputs.includeBrandFund ? customerCost * 0.01 : 0;
-  const salesCommission = globalInputs.includeSalesCommission ? customerCost * (globalInputs.salesCommission / 100) : 0;
+  const salesCommission = globalInputs.includeSalesCommission ? customerCost * 0.03 : 0;
   const totalFees = franchiseRoyalty + brandFund + salesCommission;
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
   const profitMargin = (estimatedProfit / customerCost) * 100;
@@ -222,7 +220,7 @@ export default function SprayFoamEstimator() {
         <div className="mb-8">
           <div className="flex flex-col lg:flex-row gap-4 justify-between items-start bg-white p-6 rounded-lg shadow-sm">
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-900 mb-4">Eco Innovations Estimator</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">Spray Foam Estimator</h1>
               <input
                 type="text"
                 placeholder="Enter estimate name..."
@@ -280,7 +278,7 @@ export default function SprayFoamEstimator() {
             {/* Spray Areas */}
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Project Areas</h2>
+                <h2 className="text-xl font-bold text-gray-900">Spray Areas</h2>
                 <button onClick={addArea} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                   + Add Area
                 </button>
