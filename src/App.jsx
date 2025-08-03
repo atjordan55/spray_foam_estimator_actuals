@@ -71,7 +71,7 @@ export default function SprayFoamEstimator() {
 
   const calculateMaterialCost = (area) => {
     let sqft = area.length * area.width;
-    
+
     if (area.areaType === "Roof Deck") {
       const [rise, run] = area.roofPitch.split("/").map(Number);
       const pitchMultiplier = Math.sqrt(Math.pow(rise, 2) + Math.pow(run, 2)) / run;
@@ -104,7 +104,7 @@ export default function SprayFoamEstimator() {
     const updated = [...sprayAreas];
     if (key === "foamType" || key === "areaType" || key === "roofPitch") {
       updated[index][key] = value;
-      
+
       // Auto-configure foam thickness, material price, markup, and board feet per set based on foam type
       if (key === "foamType") {
         if (value === "Open") {
@@ -340,6 +340,16 @@ export default function SprayFoamEstimator() {
                             type="number"
                             step="0.01"
                             value={(area.materialPrice * 1.20).toFixed(2)}
+                            readOnly
+                            className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Price per Sq Ft</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={(totalCost / sqft).toFixed(2)}
                             readOnly
                             className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                           />
