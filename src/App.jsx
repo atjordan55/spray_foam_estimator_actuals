@@ -386,21 +386,21 @@ export default function SprayFoamEstimator() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Price Charged per Sq Ft</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">$/Per Set</label>
                           <input
                             type="number"
                             step="0.01"
-                            value={(totalCost / sqft).toFixed(2)}
+                            value={(area.materialPrice * 1.20 * (1 + area.materialMarkup / 100)).toFixed(2)}
                             readOnly
                             className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Price Charged per Set</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">$/Sq Ft</label>
                           <input
                             type="number"
                             step="0.01"
-                            value={(area.materialPrice * 1.20 * (1 + area.materialMarkup / 100)).toFixed(2)}
+                            value={(totalCost / sqft).toFixed(2)}
                             readOnly
                             className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                           />
