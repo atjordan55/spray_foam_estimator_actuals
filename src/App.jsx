@@ -400,7 +400,7 @@ export default function SprayFoamEstimator() {
                           <input
                             type="number"
                             step="0.01"
-                            value={(totalCost / sqft).toFixed(2)}
+                            value={sqft > 0 ? (totalCost / sqft).toFixed(2) : "0.00"}
                             readOnly
                             className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                           />
