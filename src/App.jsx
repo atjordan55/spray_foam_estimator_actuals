@@ -23,6 +23,7 @@ export default function SprayFoamEstimator() {
     travelRate: 0.68,
     wasteDisposal: 50,
     equipmentRental: 0,
+    salesCommission: 3,
     includeFranchiseRoyalty: true,
     includeBrandFund: true,
     includeSalesCommission: true
@@ -55,6 +56,7 @@ export default function SprayFoamEstimator() {
     travelRate: "Travel Rate ($/mile)",
     wasteDisposal: "Waste Disposal ($)",
     equipmentRental: "Equipment Rental ($)",
+    salesCommission: "Sales Commission (%)",
     includeFranchiseRoyalty: "Include Franchise Royalty",
     includeBrandFund: "Include Brand Fund",
     includeSalesCommission: "Include Sales Commission",
@@ -196,7 +198,7 @@ export default function SprayFoamEstimator() {
   const customerCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
   const franchiseRoyalty = globalInputs.includeFranchiseRoyalty ? customerCost * 0.06 : 0;
   const brandFund = globalInputs.includeBrandFund ? customerCost * 0.01 : 0;
-  const salesCommission = globalInputs.includeSalesCommission ? customerCost * 0.03 : 0;
+  const salesCommission = globalInputs.includeSalesCommission ? customerCost * (globalInputs.salesCommission / 100) : 0;
   const totalFees = franchiseRoyalty + brandFund + salesCommission;
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
   const profitMargin = (estimatedProfit / customerCost) * 100;
