@@ -1,66 +1,45 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost }) => (
-  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-    <h4 className="font-medium text-gray-900 mb-2">Area Results</h4>
-    <div className="text-sm space-y-1">
-      <div className="flex justify-between">
-        <span>Square Feet:</span>
-        <span>{sqft.toFixed(1)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span>Gallons:</span>
-        <span>{gallons.toFixed(1)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span>Sets:</span>
-        <span>{sets.toFixed(2)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span>Base Material Cost:</span>
-        <span>${baseMaterialCost.toFixed(2)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span>Markup Amount:</span>
-        <span>${markupAmount.toFixed(2)}</span>
-      </div>
-      <div className="flex justify-between font-medium">
-        <span>Total Cost:</span>
-        <span>${totalCost.toFixed(2)}</span>
-      </div>
+  <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm border">
+    <div className="grid grid-cols-3 gap-2">
+      <div><span className="font-medium">Sq Ft:</span> {sqft.toFixed(0)}</div>
+      <div><span className="font-medium">Gallons:</span> {gallons.toFixed(1)}</div>
+      <div><span className="font-medium">Sets:</span> {sets.toFixed(2)}</div>
+      <div><span className="font-medium">Base Cost:</span> ${baseMaterialCost.toFixed(2)}</div>
+      <div><span className="font-medium">Markup:</span> ${markupAmount.toFixed(2)}</div>
+      <div><span className="font-medium">Total:</span> ${totalCost.toFixed(2)}</div>
     </div>
   </div>
 );
 
 export default function SprayFoamEstimator() {
-  const [areas, setAreas] = useState([
-    {
-      foamType: "Open",
-      foamThickness: 6,
-      materialPrice: 1870,
-      materialMarkup: 75,
-      areaType: "General Area",
-      roofPitch: "4/12",
-      boardFeetPerSet: 14000
-    }
-  ]);
-
+  const [estimateName, setEstimateName] = useState("");
   const [globalInputs, setGlobalInputs] = useState({
-    laborRate: 50,
-    laborMarkup: 30,
-    materialMarkup: 75,
+    laborHours: 0,
+    manualLaborRate: 50,
+    laborMarkup: 40,
     travelDistance: 50,
-    fuelCostPerMile: 0.5,
+    travelRate: 0.68,
     wasteDisposal: 50,
     equipmentRental: 0,
-    includeFranchiseRoyalty: false,
-    franchiseRoyaltyRate: 6,
-    includeBrandFund: false,
-    brandFundRate: 2,
-    includeSalesCommission: false,
-    salesCommissionRate: 5
+    includeFranchiseRoyalty: true,
+    includeBrandFund: true,
+    includeSalesCommission: true
   });
+
+  const [sprayAreas, setSprayAreas] = useState([{
+    length: 0,
+    width: 0,
+    foamType: "Open",
+    foamThickness: 6,
+    materialPrice: 1870,
+    materialMarkup: 75,
+    areaType: "General Area",
+    roofPitch: "4/12",
+    boardFeetPerSet: 14000
+  }]);
 
   const [actuals, setActuals] = useState({
     actualLaborHours: 0,
@@ -68,38 +47,88 @@ export default function SprayFoamEstimator() {
     actualClosedGallons: 0
   });
 
-  const [areaInputs, setAreaInputs] = useState({});
-
-  useEffect(() => {
-    const initialInputs = {};
-    areas.forEach((area, index) => {
-      if (!areaInputs[index]) {
-        initialInputs[index] = {
-          area: "",
-          width: "",
-          height: "",
-          roofPitch: area.roofPitch
-        };
-      }
-    });
-    if (Object.keys(initialInputs).length > 0) {
-      setAreaInputs(prev => ({ ...prev, ...initialInputs }));
-    }
-  }, [areas.length]);
-
-  const areaTypes = {
-    "General Area": { labor: 2 },
-    "Rim Joist": { labor: 1.5 },
-    "Crawl Space": { labor: 3 },
-    "Attic": { labor: 2.5 },
-    "Wall": { labor: 1.8 },
-    "Basement": { labor: 2.2 }
+  const labelMap = {
+    laborHours: "Labor Hours",
+    manualLaborRate: "Labor Rate ($/hr)",
+    laborMarkup: "Labor Markup (%)",
+    travelDistance: "Travel Distance (miles)",
+    travelRate: "Travel Rate ($/mile)",
+    wasteDisposal: "Waste Disposal ($)",
+    equipmentRental: "Equipment Rental ($)",
+    includeFranchiseRoyalty: "Include Franchise Royalty",
+    includeBrandFund: "Include Brand Fund",
+    includeSalesCommission: "Include Sales Commission",
+    length: "Length (ft)",
+    width: "Width (ft)",
+    foamType: "Foam Type",
+    foamThickness: "Foam Thickness (inches)",
+    materialPrice: "Foam Price per Set",
+    materialMarkup: "Material Markup (%)",
+    areaType: "Area Type",
+    roofPitch: "Roof Pitch",
+    boardFeetPerSet: "Board Feet per Set"
   };
 
-  const roofPitches = ["1/12", "2/12", "3/12", "4/12", "5/12", "6/12", "7/12", "8/12", "9/12", "10/12", "11/12", "12/12"];
+  const calculateMaterialCost = (area) => {
+    let sqft = area.length * area.width;
+
+    if (area.areaType === "Roof Deck") {
+      const [rise, run] = area.roofPitch.split("/").map(Number);
+      const pitchMultiplier = Math.sqrt(Math.pow(rise, 2) + Math.pow(run, 2)) / run;
+      sqft *= pitchMultiplier;
+    } else if (area.areaType === "Gable") {
+      sqft = 0.5 * area.length * area.width;
+    }
+
+    const boardFeetPerInch = sqft;
+    const totalBoardFeet = boardFeetPerInch * area.foamThickness;
+    const sets = totalBoardFeet / area.boardFeetPerSet;
+    const gallons = sets * 100;
+    const materialCost = area.materialPrice * 1.20;
+    const baseMaterialCost = sets * materialCost;
+    const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
+    const totalCost = baseMaterialCost + markupAmount;
+
+    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost };
+  };
+
+  const handleGlobalChange = (key, value) => {
+    setGlobalInputs({ ...globalInputs, [key]: parseFloat(value) || 0 });
+  };
+
+  const handleActualsChange = (key, value) => {
+    setActuals({ ...actuals, [key]: parseFloat(value) || 0 });
+  };
+
+  const updateArea = (index, key, value) => {
+    const updated = [...sprayAreas];
+    if (key === "foamType" || key === "areaType" || key === "roofPitch") {
+      updated[index][key] = value;
+
+      // Auto-configure foam thickness, material price, markup, and board feet per set based on foam type
+      if (key === "foamType") {
+        if (value === "Open") {
+          updated[index].foamThickness = 6;
+          updated[index].materialPrice = 1870;
+          updated[index].materialMarkup = 75;
+          updated[index].boardFeetPerSet = 14000;
+        } else if (value === "Closed") {
+          updated[index].foamThickness = 2;
+          updated[index].materialPrice = 2470;
+          updated[index].materialMarkup = 60;
+          updated[index].boardFeetPerSet = 4000;
+        }
+      }
+    } else {
+      updated[index][key] = parseFloat(value) || 0;
+    }
+    setSprayAreas(updated);
+  };
 
   const addArea = () => {
-    const newArea = {
+    setSprayAreas([...sprayAreas, {
+      length: 0,
+      width: 0,
       foamType: "Open",
       foamThickness: 6,
       materialPrice: 1870,
@@ -107,398 +136,189 @@ export default function SprayFoamEstimator() {
       areaType: "General Area",
       roofPitch: "4/12",
       boardFeetPerSet: 14000
-    };
-    setAreas([...areas, newArea]);
+    }]);
   };
 
   const removeArea = (index) => {
-    if (areas.length > 1) {
-      setAreas(areas.filter((_, i) => i !== index));
-      const newAreaInputs = { ...areaInputs };
-      delete newAreaInputs[index];
-      
-      const reindexed = {};
-      Object.keys(newAreaInputs).forEach((key, newIndex) => {
-        if (parseInt(key) > index) {
-          reindexed[parseInt(key) - 1] = newAreaInputs[key];
-        } else {
-          reindexed[key] = newAreaInputs[key];
-        }
-      });
-      setAreaInputs(reindexed);
-    }
+    setSprayAreas(sprayAreas.filter((_, i) => i !== index));
   };
 
-  const updateArea = (index, field, value) => {
-    const updated = [...areas];
-    if (field === "foamType") {
-      updated[index][field] = value;
-      if (value === "Open") {
-        updated[index].foamThickness = 6;
-        updated[index].materialPrice = 1870;
-        updated[index].materialMarkup = 75;
-        updated[index].boardFeetPerSet = 14000;
-      } else if (value === "Closed") {
-        updated[index].foamThickness = 2;
-        updated[index].materialPrice = 2470;
-        updated[index].materialMarkup = 60;
-        updated[index].boardFeetPerSet = 4000;
+  const saveEstimate = () => {
+    const json = JSON.stringify({ estimateName, globalInputs, sprayAreas, actuals }, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${estimateName || 'spray-foam-estimate'}.json`;
+    a.click();
+  };
+
+  const loadEstimate = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        setEstimateName(data.estimateName || "");
+        setGlobalInputs(data.globalInputs || {});
+        setSprayAreas(data.sprayAreas || []);
+        setActuals(data.actuals || {});
+      } catch (err) {
+        alert("Invalid JSON file.");
       }
+    };
+    reader.readAsText(file);
+  };
+
+  const totalGallons = { open: 0, closed: 0 };
+  const totalSets = { open: 0, closed: 0 };
+  let baseMaterialCost = 0;
+  let materialMarkupAmount = 0;
+
+  sprayAreas.forEach(area => {
+    const { gallons, sets, baseMaterialCost: cost, markupAmount } = calculateMaterialCost(area);
+    if (area.foamType === "Open") {
+      totalGallons.open += gallons;
+      totalSets.open += sets;
     } else {
-      updated[index][field] = parseFloat(value) || 0;
+      totalGallons.closed += gallons;
+      totalSets.closed += sets;
     }
-    setAreas(updated);
-  };
-
-  const updateAreaInput = (index, field, value) => {
-    setAreaInputs(prev => ({
-      ...prev,
-      [index]: {
-        ...prev[index],
-        [field]: value
-      }
-    }));
-  };
-
-  const handleActualsChange = (field, value) => {
-    setActuals(prev => ({
-      ...prev,
-      [field]: parseFloat(value) || 0
-    }));
-  };
-
-  const calculateAreaResults = (area, index) => {
-    const inputs = areaInputs[index] || {};
-    let sqft = 0;
-
-    if (inputs.area) {
-      sqft = parseFloat(inputs.area) || 0;
-    } else if (inputs.width && inputs.height) {
-      const width = parseFloat(inputs.width) || 0;
-      const height = parseFloat(inputs.height) || 0;
-      sqft = width * height;
-
-      if (area.areaType === "General Area" && inputs.roofPitch) {
-        const pitch = inputs.roofPitch.split('/');
-        const rise = parseFloat(pitch[0]);
-        const run = parseFloat(pitch[1]);
-        const pitchMultiplier = Math.sqrt((rise * rise + run * run)) / run;
-        sqft *= pitchMultiplier;
-      }
-    }
-
-    const gallons = (sqft * area.foamThickness) / 12;
-    const sets = gallons / (area.boardFeetPerSet / 1000);
-    const baseMaterialCost = sets * (area.materialPrice * 1.20);
-    const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
-    const totalCost = baseMaterialCost + markupAmount;
-
-    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost };
-  };
-
-  const totalResults = areas.reduce((acc, area, index) => {
-    const results = calculateAreaResults(area, index);
-    acc.sqft += results.sqft;
-    acc.gallons[area.foamType.toLowerCase()] += results.gallons;
-    acc.sets[area.foamType.toLowerCase()] += results.sets;
-    acc.baseMaterialCost += results.baseMaterialCost;
-    acc.markupAmount += results.markupAmount;
-    acc.totalCost += results.totalCost;
-    return acc;
-  }, {
-    sqft: 0,
-    gallons: { open: 0, closed: 0 },
-    sets: { open: 0, closed: 0 },
-    baseMaterialCost: 0,
-    markupAmount: 0,
-    totalCost: 0
+    baseMaterialCost += cost;
+    materialMarkupAmount += markupAmount;
   });
 
-  const totalGallons = totalResults.gallons;
-  const totalSets = totalResults.sets;
-  const baseMaterialCost = totalResults.baseMaterialCost;
-  const materialMarkupAmount = totalResults.markupAmount;
-
-  const totalLaborHours = areas.reduce((acc, area, index) => {
-    const results = calculateAreaResults(area, index);
-    const laborMultiplier = areaTypes[area.areaType]?.labor || 2;
-    return acc + (results.sqft * laborMultiplier / 1000);
-  }, 0);
-
-  const baseLaborCost = totalLaborHours * globalInputs.laborRate;
-  const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
-
-  const fuelCost = globalInputs.travelDistance * globalInputs.fuelCostPerMile;
-
+  const fuelCost = globalInputs.travelDistance * globalInputs.travelRate;
+  const baseLaborCost = globalInputs.laborHours * globalInputs.manualLaborRate;
   const totalBaseCost = baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
-  const customerCost = baseMaterialCost + materialMarkupAmount + baseLaborCost + laborMarkupAmount + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
-
-  const franchiseRoyalty = globalInputs.includeFranchiseRoyalty ? customerCost * (globalInputs.franchiseRoyaltyRate / 100) : 0;
-  const brandFund = globalInputs.includeBrandFund ? customerCost * (globalInputs.brandFundRate / 100) : 0;
-  const salesCommission = globalInputs.includeSalesCommission ? customerCost * (globalInputs.salesCommissionRate / 100) : 0;
-
+  const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
+  const customerCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
+  const franchiseRoyalty = globalInputs.includeFranchiseRoyalty ? customerCost * 0.06 : 0;
+  const brandFund = globalInputs.includeBrandFund ? customerCost * 0.01 : 0;
+  const salesCommission = globalInputs.includeSalesCommission ? customerCost * 0.03 : 0;
   const totalFees = franchiseRoyalty + brandFund + salesCommission;
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
-  const profitMargin = customerCost > 0 ? (estimatedProfit / customerCost) * 100 : 0;
+  const profitMargin = (estimatedProfit / customerCost) * 100;
 
-  const marginColor = profitMargin >= 20 ? 'text-green-600' : profitMargin >= 10 ? 'text-yellow-600' : 'text-red-600';
-
-  const actualOpenCost = actuals.actualOpenGallons * (1870 * 1.20 / 1000);
-  const actualClosedCost = actuals.actualClosedGallons * (2470 * 1.20 / 1000);
-  const actualMaterialCost = actualOpenCost + actualClosedCost;
-  const actualLaborCost = actuals.actualLaborHours * globalInputs.laborRate;
+  const actualMaterialCost = (actuals.actualOpenGallons / 100) * (1870 * 1.20) + (actuals.actualClosedGallons / 100) * (2470 * 1.20);
+  const actualLaborCost = actuals.actualLaborHours * globalInputs.manualLaborRate;
   const actualBaseCost = actualMaterialCost + actualLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
+  const actualCustomerCost = customerCost;
+  const actualFees = totalFees;
+  const actualProfit = actualCustomerCost - actualBaseCost - actualFees;
+  const actualMargin = (actualProfit / actualCustomerCost) * 100;
+  const marginColor = profitMargin < 25 ? "text-red-600" : profitMargin < 30 ? "text-yellow-600" : "text-green-600";
+  const actualMarginColor = actualMargin < 25 ? "text-red-600" : actualMargin < 30 ? "text-yellow-600" : "text-green-600";
 
-  const actualFranchiseRoyalty = globalInputs.includeFranchiseRoyalty ? customerCost * (globalInputs.franchiseRoyaltyRate / 100) : 0;
-  const actualBrandFund = globalInputs.includeBrandFund ? customerCost * (globalInputs.brandFundRate / 100) : 0;
-  const actualSalesCommission = globalInputs.includeSalesCommission ? customerCost * (globalInputs.salesCommissionRate / 100) : 0;
-  const actualFees = actualFranchiseRoyalty + actualBrandFund + actualSalesCommission;
-
-  const actualProfit = customerCost - actualBaseCost - actualFees;
-  const actualMargin = customerCost > 0 ? (actualProfit / customerCost) * 100 : 0;
-
-  const actualMarginColor = actualMargin >= 20 ? 'text-green-600' : actualMargin >= 10 ? 'text-yellow-600' : 'text-red-600';
+  const pitchOptions = Array.from({ length: 12 }, (_, i) => `${i + 1}/12`);
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">Spray Foam Estimator</h1>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto max-w-7xl p-6">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex flex-col lg:flex-row gap-4 justify-between items-start bg-white p-6 rounded-lg shadow-sm">
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">Spray Foam Estimator</h1>
+              <input
+                type="text"
+                placeholder="Enter estimate name..."
+                value={estimateName}
+                onChange={(e) => setEstimateName(e.target.value)}
+                className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={saveEstimate} className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                Save Estimate
+              </button>
+              <label className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium cursor-pointer transition-colors">
+                Load Estimate
+                <input type="file" accept="application/json" onChange={loadEstimate} className="hidden" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           {/* Left Column - Inputs */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Project Parameters */}
+          <div className="xl:col-span-2 space-y-8">
+            {/* Global Inputs */}
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <h2 className="text-xl font-bold text-gray-900 mb-6">Project Parameters</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Labor Rate ($/hr)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={globalInputs.laborRate}
-                    onChange={(e) => setGlobalInputs(prev => ({ ...prev, laborRate: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Labor Markup (%)</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={globalInputs.laborMarkup}
-                    onChange={(e) => setGlobalInputs(prev => ({ ...prev, laborMarkup: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Travel Distance (miles)</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={globalInputs.travelDistance}
-                    onChange={(e) => setGlobalInputs(prev => ({ ...prev, travelDistance: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Fuel Cost ($/mile)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={globalInputs.fuelCostPerMile}
-                    onChange={(e) => setGlobalInputs(prev => ({ ...prev, fuelCostPerMile: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Waste Disposal ($)</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={globalInputs.wasteDisposal}
-                    onChange={(e) => setGlobalInputs(prev => ({ ...prev, wasteDisposal: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Equipment Rental ($)</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={globalInputs.equipmentRental}
-                    onChange={(e) => setGlobalInputs(prev => ({ ...prev, equipmentRental: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-4">
-                <div className="flex items-center space-x-4">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={globalInputs.includeFranchiseRoyalty}
-                      onChange={(e) => setGlobalInputs(prev => ({ ...prev, includeFranchiseRoyalty: e.target.checked }))}
-                      className="mr-2"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Franchise Royalty</span>
-                  </label>
-                  {globalInputs.includeFranchiseRoyalty && (
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={globalInputs.franchiseRoyaltyRate}
-                      onChange={(e) => setGlobalInputs(prev => ({ ...prev, franchiseRoyaltyRate: parseFloat(e.target.value) || 0 }))}
-                      className="w-20 border border-gray-300 p-1 rounded text-sm"
-                      placeholder="%"
-                    />
-                  )}
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={globalInputs.includeBrandFund}
-                      onChange={(e) => setGlobalInputs(prev => ({ ...prev, includeBrandFund: e.target.checked }))}
-                      className="mr-2"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Brand Fund</span>
-                  </label>
-                  {globalInputs.includeBrandFund && (
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={globalInputs.brandFundRate}
-                      onChange={(e) => setGlobalInputs(prev => ({ ...prev, brandFundRate: parseFloat(e.target.value) || 0 }))}
-                      className="w-20 border border-gray-300 p-1 rounded text-sm"
-                      placeholder="%"
-                    />
-                  )}
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={globalInputs.includeSalesCommission}
-                      onChange={(e) => setGlobalInputs(prev => ({ ...prev, includeSalesCommission: e.target.checked }))}
-                      className="mr-2"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Sales Commission</span>
-                  </label>
-                  {globalInputs.includeSalesCommission && (
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={globalInputs.salesCommissionRate}
-                      onChange={(e) => setGlobalInputs(prev => ({ ...prev, salesCommissionRate: parseFloat(e.target.value) || 0 }))}
-                      className="w-20 border border-gray-300 p-1 rounded text-sm"
-                      placeholder="%"
-                    />
-                  )}
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Object.entries(globalInputs).map(([key, val]) => (
+                  <div key={key}>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">{labelMap[key] || key}</label>
+                    {key.startsWith('include') ? (
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={val}
+                          onChange={(e) => setGlobalInputs({ ...globalInputs, [key]: e.target.checked })}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="ml-2 text-sm text-gray-600">Include in calculation</span>
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={val}
+                        onChange={(e) => handleGlobalChange(key, e.target.value)}
+                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Areas */}
+            {/* Spray Areas */}
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Areas</h2>
-                <button
-                  onClick={addArea}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500"
-                >
-                  Add Area
+                <h2 className="text-xl font-bold text-gray-900">Spray Areas</h2>
+                <button onClick={addArea} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                  + Add Area
                 </button>
               </div>
-              
               <div className="space-y-6">
-                {areas.map((area, index) => {
-                  const results = calculateAreaResults(area, index);
-                  const { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost } = results;
-
+                {sprayAreas.map((area, index) => {
+                  const { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost } = calculateMaterialCost(area);
                   return (
                     <div key={index} className="border border-gray-200 p-4 rounded-lg">
                       <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-medium text-gray-900">Area {index + 1}</h3>
-                        {areas.length > 1 && (
-                          <button
-                            onClick={() => removeArea(index)}
-                            className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                          >
+                        <h3 className="font-medium text-gray-900">Area {index + 1}</h3>
+                        {sprayAreas.length > 1 && (
+                          <button onClick={() => removeArea(index)} className="text-red-500 hover:text-red-700 text-sm font-medium">
                             Remove
                           </button>
                         )}
                       </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Area (sqft)</label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={areaInputs[index]?.area || ""}
-                            onChange={(e) => updateAreaInput(index, "area", e.target.value)}
-                            className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="Direct area input"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Width (ft)</label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={areaInputs[index]?.width || ""}
-                            onChange={(e) => updateAreaInput(index, "width", e.target.value)}
-                            className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="For calculation"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Height (ft)</label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={areaInputs[index]?.height || ""}
-                            onChange={(e) => updateAreaInput(index, "height", e.target.value)}
-                            className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="For calculation"
-                          />
-                        </div>
-                      </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {Object.entries(area).map(([key, val]) => {
-                          const options = key === "foamType" ? ["Open", "Closed"] :
-                                        key === "areaType" ? Object.keys(areaTypes) :
-                                        key === "roofPitch" ? roofPitches : null;
-
-                          const label = key === "materialPrice" ? "Foam Price per Set" :
-                                       key === "foamType" ? "Foam Type" :
-                                       key === "foamThickness" ? "Foam Thickness (in)" :
-                                       key === "materialMarkup" ? "Material Markup (%)" :
-                                       key === "areaType" ? "Area Type" :
-                                       key === "roofPitch" ? "Roof Pitch" :
-                                       key === "boardFeetPerSet" ? "Board Feet per Set" : key;
-
+                          if (key === "roofPitch" && area.areaType !== "Roof Deck") return null;
                           return (
                             <div key={key}>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-                              {options ? (
+                              <label className="block text-sm font-medium text-gray-700 mb-1">{labelMap[key] || key}</label>
+                              {key === "foamType" || key === "areaType" ? (
                                 <select
                                   value={val}
-                                  onChange={(e) => {
-                                    if (key === "roofPitch") {
-                                      updateAreaInput(index, key, e.target.value);
-                                    } else {
-                                      updateArea(index, key, e.target.value);
-                                    }
-                                  }}
+                                  onChange={(e) => updateArea(index, key, e.target.value)}
                                   className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 >
-                                  {options.map(opt => (
+                                  {(key === "foamType" ? ["Open", "Closed"] : ["General Area", "Roof Deck", "Gable"]).map(opt => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
+                              ) : key === "roofPitch" ? (
+                                <select
+                                  value={val}
+                                  onChange={(e) => updateArea(index, key, e.target.value)}
+                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                >
+                                  {pitchOptions.map(opt => (
                                     <option key={opt} value={opt}>{opt}</option>
                                   ))}
                                 </select>
