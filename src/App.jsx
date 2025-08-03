@@ -64,7 +64,7 @@ export default function SprayFoamEstimator() {
     width: "Width (ft)",
     foamType: "Foam Type",
     foamThickness: "Foam Thickness (inches)",
-    materialPrice: "Foam Price per Set",
+    materialPrice: "Foam Cost per Set",
     materialMarkup: "Material Markup (%)",
     areaType: "Area Type",
     roofPitch: "Roof Pitch",
@@ -376,7 +376,7 @@ export default function SprayFoamEstimator() {
                           );
                         })}
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Material Cost</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Material Cost per Set</label>
                           <input
                             type="number"
                             step="0.01"
@@ -386,7 +386,7 @@ export default function SprayFoamEstimator() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Price per Sq Ft</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Material Price per Sq Ft</label>
                           <input
                             type="number"
                             step="0.01"
