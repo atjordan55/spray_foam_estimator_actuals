@@ -22,9 +22,7 @@ export default function SprayFoamEstimator() {
     travelDistance: 50,
     travelRate: 0.68,
     wasteDisposal: 50,
-    equipmentRental: 0,
-    salesCommission: 3,
-    includeSalesCommission: true
+    equipmentRental: 0
   });
 
   const [sprayAreas, setSprayAreas] = useState([{
@@ -40,10 +38,12 @@ export default function SprayFoamEstimator() {
   }]);
 
   const [actuals, setActuals] = useState({
-    actualLaborHours: 0,
-    actualOpenGallons: 0,
-    actualClosedGallons: 0
+    actualLaborHours: null,
+    actualOpenGallons: null,
+    actualClosedGallons: null
   });
+
+  const [actualsConfirmed, setActualsConfirmed] = useState(false);
 
   const labelMap = {
     laborHours: "Labor Hours",
@@ -54,8 +54,6 @@ export default function SprayFoamEstimator() {
     travelRate: "Travel Rate ($/mile)",
     wasteDisposal: "Waste Disposal ($)",
     equipmentRental: "Equipment Rental ($)",
-    salesCommission: "Sales Commission (%)",
-    includeSalesCommission: "Include Sales Commission",
     length: "Length (ft)",
     width: "Width (ft)",
     foamType: "Foam Type",
@@ -104,7 +102,8 @@ export default function SprayFoamEstimator() {
   };
 
   const handleActualsChange = (key, value) => {
-    setActuals({ ...actuals, [key]: parseFloat(value) || 0 });
+    const parsed = parseFloat(value);
+    setActuals({ ...actuals, [key]: isNaN(parsed) ? null : parsed });
   };
 
   const updateArea = (index, key, value) => {
@@ -170,7 +169,12 @@ export default function SprayFoamEstimator() {
         setEstimateName(data.estimateName || "");
         setGlobalInputs(data.globalInputs || {});
         setSprayAreas(data.sprayAreas || []);
-        setActuals(data.actuals || {});
+        setActuals({
+          actualLaborHours: data.actuals?.actualLaborHours ?? null,
+          actualOpenGallons: data.actuals?.actualOpenGallons ?? null,
+          actualClosedGallons: data.actuals?.actualClosedGallons ?? null
+        });
+        setActualsConfirmed(false);
       } catch (err) {
         alert("Invalid JSON file.");
       }
@@ -201,18 +205,45 @@ export default function SprayFoamEstimator() {
   const totalBaseCost = baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
   const customerCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
-  const salesCommission = globalInputs.includeSalesCommission ? customerCost * (globalInputs.salesCommission / 100) : 0;
+  
+  // Calculate net profit before sales commission for estimate
+  const netProfitBeforeCommission = customerCost - totalBaseCost;
+  const profitMarginBeforeCommission = customerCost > 0 ? (netProfitBeforeCommission / customerCost) * 100 : 0;
+  
+  // Sales commission based on profit margin thresholds
+  const calculateSalesCommission = (netProfit, margin) => {
+    if (margin >= 35) {
+      return netProfit * 0.12;
+    } else if (margin >= 30 && margin < 35) {
+      return netProfit * 0.10;
+    }
+    return 0;
+  };
+  
+  const salesCommission = calculateSalesCommission(netProfitBeforeCommission, profitMarginBeforeCommission);
   const totalFees = salesCommission;
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
-  const profitMargin = (estimatedProfit / customerCost) * 100;
+  const profitMargin = customerCost > 0 ? (estimatedProfit / customerCost) * 100 : 0;
 
-  const actualMaterialCost = (actuals.actualOpenGallons / 100) * (1870 * 1.20) + (actuals.actualClosedGallons / 100) * (2470 * 1.20);
-  const actualLaborCost = actuals.actualLaborHours * globalInputs.manualLaborRate;
+  // Use estimated values as defaults for actuals if null or undefined
+  const effectiveActualLaborHours = actuals.actualLaborHours ?? globalInputs.laborHours;
+  const effectiveActualOpenGallons = actuals.actualOpenGallons ?? totalGallons.open;
+  const effectiveActualClosedGallons = actuals.actualClosedGallons ?? totalGallons.closed;
+
+  const actualMaterialCost = (effectiveActualOpenGallons / 100) * (1870 * 1.20) + (effectiveActualClosedGallons / 100) * (2470 * 1.20);
+  const actualLaborCost = effectiveActualLaborHours * globalInputs.manualLaborRate;
   const actualBaseCost = actualMaterialCost + actualLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const actualCustomerCost = customerCost;
-  const actualFees = totalFees;
+  
+  // Calculate actual net profit before commission
+  const actualNetProfitBeforeCommission = actualCustomerCost - actualBaseCost;
+  const actualProfitMarginBeforeCommission = actualCustomerCost > 0 ? (actualNetProfitBeforeCommission / actualCustomerCost) * 100 : 0;
+  
+  // Calculate actual sales commission based on actual profit margin
+  const actualSalesCommission = calculateSalesCommission(actualNetProfitBeforeCommission, actualProfitMarginBeforeCommission);
+  const actualFees = actualSalesCommission;
   const actualProfit = actualCustomerCost - actualBaseCost - actualFees;
-  const actualMargin = (actualProfit / actualCustomerCost) * 100;
+  const actualMargin = actualCustomerCost > 0 ? (actualProfit / actualCustomerCost) * 100 : 0;
   const marginColor = profitMargin < 25 ? "text-red-600" : profitMargin < 30 ? "text-yellow-600" : "text-green-600";
   const actualMarginColor = actualMargin < 25 ? "text-red-600" : actualMargin < 30 ? "text-yellow-600" : "text-green-600";
 
@@ -257,34 +288,10 @@ export default function SprayFoamEstimator() {
               <h2 className="text-xl font-bold text-gray-900 mb-6">Project Parameters</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {Object.entries(globalInputs).map(([key, val]) => {
-                  if (key === 'salesCommission') {
-                      return (
-                          <div key={key}>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">{labelMap[key] || key}</label>
-                              <input
-                                  type="number"
-                                  step="0.01"
-                                  value={val}
-                                  onChange={(e) => handleGlobalChange(key, e.target.value)}
-                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              />
-                          </div>
-                      );
-                  }
                   return (
                       <div key={key}>
                           <label className="block text-sm font-medium text-gray-700 mb-2">{labelMap[key] || key}</label>
-                          {key.startsWith('include') ? (
-                              <div className="flex items-center">
-                                  <input
-                                      type="checkbox"
-                                      checked={val}
-                                      onChange={(e) => setGlobalInputs({ ...globalInputs, [key]: e.target.checked })}
-                                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                  />
-                                  <span className="ml-2 text-sm text-gray-600">Include in calculation</span>
-                              </div>
-                          ) : key === 'laborMarkup' ? (
+                          {key === 'laborMarkup' ? (
                               <>
                                   <input
                                       type="number"
@@ -427,13 +434,16 @@ export default function SprayFoamEstimator() {
             {/* Actual Results Input */}
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <h2 className="text-xl font-bold text-gray-900 mb-6">Actual Results Input</h2>
+              {!actualsConfirmed && (
+                <p className="text-red-600 font-medium mb-4">Please confirm that actuals are correct</p>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Actual Labor Hours</label>
                   <input
                     type="number"
                     step="0.1"
-                    value={actuals.actualLaborHours}
+                    value={actuals.actualLaborHours !== null ? actuals.actualLaborHours : globalInputs.laborHours}
                     onChange={(e) => handleActualsChange("actualLaborHours", e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -443,7 +453,7 @@ export default function SprayFoamEstimator() {
                   <input
                     type="number"
                     step="0.1"
-                    value={actuals.actualOpenGallons}
+                    value={actuals.actualOpenGallons !== null ? actuals.actualOpenGallons : totalGallons.open.toFixed(1)}
                     onChange={(e) => handleActualsChange("actualOpenGallons", e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -453,11 +463,20 @@ export default function SprayFoamEstimator() {
                   <input
                     type="number"
                     step="0.1"
-                    value={actuals.actualClosedGallons}
+                    value={actuals.actualClosedGallons !== null ? actuals.actualClosedGallons : totalGallons.closed.toFixed(1)}
                     onChange={(e) => handleActualsChange("actualClosedGallons", e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
+              </div>
+              <div className="mt-4 flex items-center">
+                <input
+                  type="checkbox"
+                  checked={actualsConfirmed}
+                  onChange={(e) => setActualsConfirmed(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <span className="ml-2 text-sm font-medium text-gray-700">Labor and Material Confirmed</span>
               </div>
             </div>
           </div>
@@ -515,12 +534,10 @@ export default function SprayFoamEstimator() {
                   <span>Customer Charge:</span>
                   <span>${customerCost.toFixed(2)}</span>
                 </div>
-                {globalInputs.includeSalesCommission && (
-                  <div className="flex justify-between py-1">
-                    <span className="text-gray-600">Sales Commission:</span>
-                    <span>${salesCommission.toFixed(2)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between py-1">
+                  <span className="text-gray-600">Sales Commission {profitMarginBeforeCommission >= 35 ? '(12%)' : profitMarginBeforeCommission >= 30 ? '(10%)' : '(0%)'}:</span>
+                  <span>${salesCommission.toFixed(2)}</span>
+                </div>
                 <div className="flex justify-between py-1 font-medium">
                   <span>Total Fees:</span>
                   <span>${totalFees.toFixed(2)}</span>
@@ -552,6 +569,10 @@ export default function SprayFoamEstimator() {
                 <div className="flex justify-between py-1 font-bold text-lg">
                   <span>Customer Charge:</span>
                   <span>${customerCost.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-gray-600">Sales Commission {actualProfitMarginBeforeCommission >= 35 ? '(12%)' : actualProfitMarginBeforeCommission >= 30 ? '(10%)' : '(0%)'}:</span>
+                  <span>${actualSalesCommission.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between py-1">
                   <span className="text-gray-600">Total Fees:</span>
