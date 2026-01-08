@@ -27,7 +27,19 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### Sales Commission Logic (Updated)
+### Usability Improvements (Latest)
+- **Customer Information Section**: Added fields for customer name, phone, email, and address
+- **Date Fields**: Estimate Date and Valid Until (expiration) date fields with 30-day default validity
+- **Project Notes**: Text area for special instructions, job site conditions, or other notes
+- **Print/PDF Export**: Print button that opens browser print dialog for PDF generation
+- **Reset Button**: Clear all fields and start a new estimate with confirmation dialog
+- **Input Validation**: All numeric inputs prevent negative values
+- **Tooltips**: Helpful info icons next to all fields explaining their purpose
+- **Recent Estimates**: Last 10 estimates stored in browser for quick access
+- **Comparison View**: Toggle to show side-by-side Estimated vs Actual comparison table
+- **Mobile Responsive**: Optimized layout for tablets and phones
+
+### Sales Commission Logic
 - Sales commission is now calculated based on profit margin thresholds:
   - 10% of net profit at 30–34.99% profit margin
   - 12% of net profit at ≥35% profit margin
