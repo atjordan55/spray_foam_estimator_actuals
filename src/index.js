@@ -1,11 +1,11 @@
 import './index.css';
 import React from 'react';
-import ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import SprayFoamEstimator from './App.jsx';
 
-ReactDOM.render(
+const root = createRoot(document.getElementById('root'));
+root.render(
   <React.StrictMode>
     <SprayFoamEstimator />
-  </React.StrictMode>,
-  document.getElementById('root')
+  </React.StrictMode>
 );
