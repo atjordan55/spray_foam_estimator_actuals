@@ -29,6 +29,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Usability Improvements (Latest)
 - **Customer Information Section**: Added fields for customer name, phone, email, and address
+- **Customer Name as Estimate Name**: Customer name auto-populates the estimate name field if empty
 - **Date Fields**: Estimate Date and Valid Until (expiration) date fields with 30-day default validity
 - **Project Notes**: Text area for special instructions, job site conditions, or other notes
 - **Print/PDF Export**: Print button that opens browser print dialog for PDF generation
@@ -38,6 +39,12 @@ Preferred communication style: Simple, everyday language.
 - **Recent Estimates**: Last 10 estimates stored in browser for quick access
 - **Comparison View**: Toggle to show side-by-side Estimated vs Actual comparison table
 - **Mobile Responsive**: Optimized layout for tablets and phones
+
+### Project Areas Improvements
+- **Area (Sq Ft) Field**: New editable field to enter known square footage directly
+- **Optional Length/Width**: Length and Width fields are now optional - only needed if calculating from dimensions
+- **Smart Calculation**: Uses Area (Sq Ft) if provided; otherwise calculates from Length × Width
+- **Area Type Adjustments**: Roof Deck pitch multiplier and Gable half-area only apply when using Length × Width calculation
 
 ### Sales Commission Logic
 - Sales commission is now calculated based on profit margin thresholds:

@@ -48,6 +48,7 @@ const getDefaultState = () => ({
     equipmentRental: 0
   },
   sprayAreas: [{
+    areaSqFt: 0,
     length: 0,
     width: 0,
     foamType: "Open",
@@ -91,6 +92,12 @@ export default function SprayFoamEstimator() {
     }
   }, []);
 
+  useEffect(() => {
+    if (customerInfo.name && !estimateName) {
+      setEstimateName(customerInfo.name);
+    }
+  }, [customerInfo.name]);
+
   const tooltips = {
     laborHours: "Total estimated labor hours for the project",
     manualLaborRate: "Your actual cost per hour for labor",
@@ -100,8 +107,9 @@ export default function SprayFoamEstimator() {
     travelRate: "Cost per mile for travel (fuel, wear, etc.)",
     wasteDisposal: "Cost for disposing of waste materials",
     equipmentRental: "Any equipment rental costs for this job",
-    length: "Length of the spray area in feet",
-    width: "Width of the spray area in feet",
+    areaSqFt: "Total square footage for this area (enter directly or use Length × Width)",
+    length: "Optional: Length in feet (used to calculate area if provided)",
+    width: "Optional: Width in feet (used to calculate area if provided)",
     foamType: "Open cell is less dense, closed cell is denser",
     foamThickness: "Thickness of foam application in inches",
     materialPrice: "Cost per set of foam from supplier",
@@ -120,8 +128,9 @@ export default function SprayFoamEstimator() {
     travelRate: "Travel Rate ($/mile)",
     wasteDisposal: "Waste Disposal ($)",
     equipmentRental: "Equipment Rental ($)",
-    length: "Length (ft)",
-    width: "Width (ft)",
+    areaSqFt: "Area (Sq Ft)",
+    length: "Length (ft) - Optional",
+    width: "Width (ft) - Optional",
     foamType: "Foam Type",
     foamThickness: "Foam Thickness (inches)",
     materialPrice: "Foam Cost per Set",
@@ -132,14 +141,20 @@ export default function SprayFoamEstimator() {
   };
 
   const calculateMaterialCost = (area) => {
-    let sqft = area.length * area.width;
-
-    if (area.areaType === "Roof Deck") {
-      const [rise, run] = area.roofPitch.split("/").map(Number);
-      const pitchMultiplier = Math.sqrt(Math.pow(rise, 2) + Math.pow(run, 2)) / run;
-      sqft *= pitchMultiplier;
-    } else if (area.areaType === "Gable") {
-      sqft = 0.5 * area.length * area.width;
+    let sqft;
+    
+    if (area.areaSqFt > 0) {
+      sqft = area.areaSqFt;
+    } else {
+      sqft = area.length * area.width;
+      
+      if (area.areaType === "Roof Deck") {
+        const [rise, run] = area.roofPitch.split("/").map(Number);
+        const pitchMultiplier = Math.sqrt(Math.pow(rise, 2) + Math.pow(run, 2)) / run;
+        sqft *= pitchMultiplier;
+      } else if (area.areaType === "Gable") {
+        sqft = 0.5 * area.length * area.width;
+      }
     }
 
     const boardFeetPerInch = sqft;
@@ -209,6 +224,7 @@ export default function SprayFoamEstimator() {
 
   const addArea = () => {
     setSprayAreas([...sprayAreas, {
+      areaSqFt: 0,
       length: 0,
       width: 0,
       foamType: "Open",
