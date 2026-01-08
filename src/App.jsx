@@ -24,8 +24,6 @@ export default function SprayFoamEstimator() {
     wasteDisposal: 50,
     equipmentRental: 0,
     salesCommission: 3,
-    includeFranchiseRoyalty: true,
-    includeBrandFund: true,
     includeSalesCommission: true
   });
 
@@ -57,8 +55,6 @@ export default function SprayFoamEstimator() {
     wasteDisposal: "Waste Disposal ($)",
     equipmentRental: "Equipment Rental ($)",
     salesCommission: "Sales Commission (%)",
-    includeFranchiseRoyalty: "Include Franchise Royalty",
-    includeBrandFund: "Include Brand Fund",
     includeSalesCommission: "Include Sales Commission",
     length: "Length (ft)",
     width: "Width (ft)",
@@ -205,10 +201,8 @@ export default function SprayFoamEstimator() {
   const totalBaseCost = baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
   const customerCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
-  const franchiseRoyalty = globalInputs.includeFranchiseRoyalty ? customerCost * 0.06 : 0;
-  const brandFund = globalInputs.includeBrandFund ? customerCost * 0.01 : 0;
   const salesCommission = globalInputs.includeSalesCommission ? customerCost * (globalInputs.salesCommission / 100) : 0;
-  const totalFees = franchiseRoyalty + brandFund + salesCommission;
+  const totalFees = salesCommission;
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
   const profitMargin = (estimatedProfit / customerCost) * 100;
 
@@ -521,18 +515,6 @@ export default function SprayFoamEstimator() {
                   <span>Customer Charge:</span>
                   <span>${customerCost.toFixed(2)}</span>
                 </div>
-                {globalInputs.includeFranchiseRoyalty && (
-                  <div className="flex justify-between py-1">
-                    <span className="text-gray-600">Franchise Royalty:</span>
-                    <span>${franchiseRoyalty.toFixed(2)}</span>
-                  </div>
-                )}
-                {globalInputs.includeBrandFund && (
-                  <div className="flex justify-between py-1">
-                    <span className="text-gray-600">Brand Fund:</span>
-                    <span>${brandFund.toFixed(2)}</span>
-                  </div>
-                )}
                 {globalInputs.includeSalesCommission && (
                   <div className="flex justify-between py-1">
                     <span className="text-gray-600">Sales Commission:</span>
