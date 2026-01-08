@@ -98,6 +98,15 @@ export default function SprayFoamEstimator() {
     setGlobalInputs({ ...globalInputs, [key]: parseFloat(value) || 0 });
   };
 
+  const handleChargedLaborRateChange = (value) => {
+    const chargedRate = parseFloat(value) || 0;
+    const actualRate = globalInputs.manualLaborRate;
+    if (actualRate > 0) {
+      const newMarkup = ((chargedRate / actualRate) - 1) * 100;
+      setGlobalInputs({ ...globalInputs, laborMarkup: newMarkup });
+    }
+  };
+
   const handleActualsChange = (key, value) => {
     setActuals({ ...actuals, [key]: parseFloat(value) || 0 });
   };
@@ -296,8 +305,9 @@ export default function SprayFoamEstimator() {
                                           type="number"
                                           step="0.01"
                                           value={chargedLaborRate.toFixed(2)}
-                                          readOnly
-                                          className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
+                                          onChange={(e) => handleChargedLaborRateChange(e.target.value)}
+                                          disabled={globalInputs.manualLaborRate <= 0}
+                                          className={`w-full border border-gray-300 p-2 rounded-lg ${globalInputs.manualLaborRate <= 0 ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
                                       />
                                   </div>
                               </>
