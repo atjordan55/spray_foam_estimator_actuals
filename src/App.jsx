@@ -82,6 +82,8 @@ export default function SprayFoamEstimator() {
   const [recentEstimates, setRecentEstimates] = useState([]);
   const [showComparison, setShowComparison] = useState(false);
   const [estimateNameManuallyEdited, setEstimateNameManuallyEdited] = useState(false);
+  const [chargedLaborRateInput, setChargedLaborRateInput] = useState("");
+  const [chargedLaborRateError, setChargedLaborRateError] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -99,6 +101,21 @@ export default function SprayFoamEstimator() {
       setEstimateName(customerInfo.name);
     }
   }, [customerInfo.name, estimateNameManuallyEdited]);
+
+  useEffect(() => {
+    if (chargedLaborRateError) {
+      const chargedRate = parseFloat(chargedLaborRateInput) || 0;
+      if (chargedRate >= globalInputs.manualLaborRate) {
+        setChargedLaborRateError("");
+        if (globalInputs.manualLaborRate > 0) {
+          const newMarkup = ((chargedRate / globalInputs.manualLaborRate) - 1) * 100;
+          setGlobalInputs(prev => ({ ...prev, laborMarkup: newMarkup }));
+        }
+      } else if (chargedRate < globalInputs.manualLaborRate && chargedLaborRateInput) {
+        setChargedLaborRateError(`Charged rate must be at least $${globalInputs.manualLaborRate.toFixed(2)} (the Actual Labor Rate)`);
+      }
+    }
+  }, [globalInputs.manualLaborRate]);
 
   const tooltips = {
     laborHours: "Total estimated labor hours for the project",
@@ -188,11 +205,18 @@ export default function SprayFoamEstimator() {
   };
 
   const handleChargedLaborRateChange = (value) => {
+    setChargedLaborRateInput(value);
     const chargedRate = parseFloat(value) || 0;
     const actualRate = globalInputs.manualLaborRate;
-    if (actualRate > 0) {
-      const newMarkup = Math.max(0, ((chargedRate / actualRate) - 1) * 100);
-      setGlobalInputs({ ...globalInputs, laborMarkup: newMarkup });
+    
+    if (chargedRate < actualRate) {
+      setChargedLaborRateError(`Charged rate must be at least $${actualRate.toFixed(2)} (the Actual Labor Rate)`);
+    } else {
+      setChargedLaborRateError("");
+      if (actualRate > 0) {
+        const newMarkup = ((chargedRate / actualRate) - 1) * 100;
+        setGlobalInputs({ ...globalInputs, laborMarkup: newMarkup });
+      }
     }
   };
 
@@ -263,6 +287,8 @@ export default function SprayFoamEstimator() {
       setActuals(defaults.actuals);
       setActualsConfirmed(false);
       setEstimateNameManuallyEdited(false);
+      setChargedLaborRateError("");
+      setChargedLaborRateInput("");
     }
   };
 
@@ -325,6 +351,8 @@ export default function SprayFoamEstimator() {
     });
     setActualsConfirmed(false);
     setEstimateNameManuallyEdited(!!data.estimateName);
+    setChargedLaborRateError("");
+    setChargedLaborRateInput("");
   };
 
   const loadRecentEstimate = (estimate) => {
@@ -576,11 +604,19 @@ export default function SprayFoamEstimator() {
                               type="number"
                               step="0.01"
                               min="0"
-                              value={chargedLaborRate.toFixed(2)}
+                              value={chargedLaborRateError ? chargedLaborRateInput : chargedLaborRate.toFixed(2)}
                               onChange={(e) => handleChargedLaborRateChange(e.target.value)}
+                              onBlur={() => {
+                                if (!chargedLaborRateError) {
+                                  setChargedLaborRateInput("");
+                                }
+                              }}
                               disabled={globalInputs.manualLaborRate <= 0}
-                              className={`w-full border border-gray-300 p-2 rounded-lg ${globalInputs.manualLaborRate <= 0 ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
+                              className={`w-full border p-2 rounded-lg ${chargedLaborRateError ? 'border-red-500 focus:ring-2 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'} ${globalInputs.manualLaborRate <= 0 ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
                             />
+                            {chargedLaborRateError && (
+                              <p className="text-red-600 text-sm mt-1">{chargedLaborRateError}</p>
+                            )}
                           </div>
                         </>
                       ) : (
