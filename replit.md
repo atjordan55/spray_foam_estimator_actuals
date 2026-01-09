@@ -45,6 +45,7 @@ Preferred communication style: Simple, everyday language.
 - **Optional Length/Width**: Length and Width fields are now optional - only needed if calculating from dimensions
 - **Smart Calculation**: Uses Area (Sq Ft) if provided; otherwise calculates from Length × Width
 - **Area Type Adjustments**: Roof Deck pitch multiplier and Gable half-area only apply when using Length × Width calculation
+- **Apply Pitch to Manual Area**: Checkbox option for Roof Deck areas to apply pitch multiplier even when entering Area (Sq Ft) directly
 
 ### Sales Commission Logic
 - Sales commission is now calculated based on profit margin thresholds:

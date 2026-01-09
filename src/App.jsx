@@ -57,7 +57,8 @@ const getDefaultState = () => ({
     materialMarkup: 75,
     areaType: "General Area",
     roofPitch: "4/12",
-    boardFeetPerSet: 14000
+    boardFeetPerSet: 14000,
+    applyPitchToManualArea: false
   }],
   actuals: {
     actualLaborHours: null,
@@ -116,7 +117,8 @@ export default function SprayFoamEstimator() {
     materialMarkup: "Percentage markup on material cost",
     areaType: "Type of surface being sprayed",
     roofPitch: "Slope of the roof (rise/run)",
-    boardFeetPerSet: "Board feet coverage per set of foam"
+    boardFeetPerSet: "Board feet coverage per set of foam",
+    applyPitchToManualArea: "Apply roof pitch multiplier to manually entered square footage"
   };
 
   const labelMap = {
@@ -145,6 +147,11 @@ export default function SprayFoamEstimator() {
     
     if (area.areaSqFt > 0) {
       sqft = area.areaSqFt;
+      if (area.areaType === "Roof Deck" && area.applyPitchToManualArea) {
+        const [rise, run] = area.roofPitch.split("/").map(Number);
+        const pitchMultiplier = Math.sqrt(Math.pow(rise, 2) + Math.pow(run, 2)) / run;
+        sqft *= pitchMultiplier;
+      }
     } else {
       sqft = area.length * area.width;
       
@@ -199,7 +206,7 @@ export default function SprayFoamEstimator() {
 
   const updateArea = (index, key, value) => {
     const updated = [...sprayAreas];
-    if (key === "foamType" || key === "areaType" || key === "roofPitch") {
+    if (key === "foamType" || key === "areaType" || key === "roofPitch" || key === "applyPitchToManualArea") {
       updated[index][key] = value;
 
       if (key === "foamType") {
@@ -233,7 +240,8 @@ export default function SprayFoamEstimator() {
       materialMarkup: 75,
       areaType: "General Area",
       roofPitch: "4/12",
-      boardFeetPerSet: 14000
+      boardFeetPerSet: 14000,
+      applyPitchToManualArea: false
     }]);
   };
 
@@ -609,6 +617,7 @@ export default function SprayFoamEstimator() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         {Object.entries(area).map(([key, val]) => {
                           if (key === "roofPitch" && area.areaType !== "Roof Deck") return null;
+                          if (key === "applyPitchToManualArea") return null;
                           return (
                             <div key={key}>
                               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -678,6 +687,21 @@ export default function SprayFoamEstimator() {
                             className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                           />
                         </div>
+                        {area.areaType === "Roof Deck" && (
+                          <div className="flex items-center col-span-full mt-2">
+                            <input
+                              type="checkbox"
+                              id={`applyPitch-${index}`}
+                              checked={area.applyPitchToManualArea || false}
+                              onChange={(e) => updateArea(index, 'applyPitchToManualArea', e.target.checked)}
+                              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <label htmlFor={`applyPitch-${index}`} className="ml-2 text-sm font-medium text-gray-700">
+                              Apply pitch multiplier to entered Area (Sq Ft)
+                              <Tooltip text={tooltips.applyPitchToManualArea} />
+                            </label>
+                          </div>
+                        )}
                       </div>
                       <MiniOutput
                         sqft={sqft}
