@@ -249,7 +249,18 @@ export default function SprayFoamEstimator() {
       }
     } else {
       const parsed = parseFloat(value);
-      updated[index][key] = isNaN(parsed) ? 0 : Math.max(0, parsed);
+      const validatedValue = isNaN(parsed) ? 0 : Math.max(0, parsed);
+      updated[index][key] = validatedValue;
+      
+      if (key === "areaSqFt" && validatedValue > 0) {
+        updated[index].length = 0;
+        updated[index].width = 0;
+      }
+      
+      if ((key === "length" || key === "width") && validatedValue > 0) {
+        updated[index].areaSqFt = 0;
+        updated[index].applyPitchToManualArea = false;
+      }
     }
     setSprayAreas(updated);
   };
@@ -660,6 +671,10 @@ export default function SprayFoamEstimator() {
                         {Object.entries(area).map(([key, val]) => {
                           if (key === "roofPitch" && area.areaType !== "Roof Deck") return null;
                           if (key === "applyPitchToManualArea") return null;
+                          
+                          const isLengthOrWidth = key === "length" || key === "width";
+                          const isDisabledByAreaSqFt = isLengthOrWidth && area.areaSqFt > 0;
+                          
                           return (
                             <div key={key}>
                               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -691,9 +706,10 @@ export default function SprayFoamEstimator() {
                                   type={typeof val === "number" ? "number" : "text"}
                                   step="0.01"
                                   min="0"
-                                  value={val}
+                                  value={isDisabledByAreaSqFt ? "" : val}
                                   onChange={(e) => updateArea(index, key, e.target.value)}
-                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  disabled={isDisabledByAreaSqFt}
+                                  className={`w-full border border-gray-300 p-2 rounded-lg ${isDisabledByAreaSqFt ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
                                 />
                               )}
                             </div>
@@ -729,7 +745,7 @@ export default function SprayFoamEstimator() {
                             className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                           />
                         </div>
-                        {area.areaType === "Roof Deck" && (
+                        {area.areaType === "Roof Deck" && area.areaSqFt > 0 && (
                           <div className="flex items-center col-span-full mt-2">
                             <input
                               type="checkbox"
