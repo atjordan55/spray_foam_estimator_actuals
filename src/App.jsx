@@ -81,6 +81,7 @@ export default function SprayFoamEstimator() {
   const [actualsConfirmed, setActualsConfirmed] = useState(false);
   const [recentEstimates, setRecentEstimates] = useState([]);
   const [showComparison, setShowComparison] = useState(false);
+  const [estimateNameManuallyEdited, setEstimateNameManuallyEdited] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -94,10 +95,10 @@ export default function SprayFoamEstimator() {
   }, []);
 
   useEffect(() => {
-    if (customerInfo.name && !estimateName) {
+    if (customerInfo.name && !estimateNameManuallyEdited) {
       setEstimateName(customerInfo.name);
     }
-  }, [customerInfo.name]);
+  }, [customerInfo.name, estimateNameManuallyEdited]);
 
   const tooltips = {
     laborHours: "Total estimated labor hours for the project",
@@ -261,6 +262,7 @@ export default function SprayFoamEstimator() {
       setSprayAreas(defaults.sprayAreas);
       setActuals(defaults.actuals);
       setActualsConfirmed(false);
+      setEstimateNameManuallyEdited(false);
     }
   };
 
@@ -322,6 +324,7 @@ export default function SprayFoamEstimator() {
       actualClosedGallons: data.actuals?.actualClosedGallons ?? null
     });
     setActualsConfirmed(false);
+    setEstimateNameManuallyEdited(!!data.estimateName);
   };
 
   const loadRecentEstimate = (estimate) => {
@@ -420,7 +423,10 @@ export default function SprayFoamEstimator() {
                   type="text"
                   placeholder="Enter estimate name..."
                   value={estimateName}
-                  onChange={(e) => setEstimateName(e.target.value)}
+                  onChange={(e) => {
+                    setEstimateName(e.target.value);
+                    setEstimateNameManuallyEdited(true);
+                  }}
                   className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
