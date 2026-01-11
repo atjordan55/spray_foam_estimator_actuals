@@ -40,10 +40,10 @@ const getDefaultState = () => ({
   projectNotes: "",
   globalInputs: {
     laborHours: 0,
-    manualLaborRate: 50,
+    manualLaborRate: 65,
     laborMarkup: 40,
     travelDistance: 50,
-    travelRate: 0.68,
+    travelRate: 0.70,
     wasteDisposal: 50,
     equipmentRental: 0
   },
@@ -84,6 +84,14 @@ export default function SprayFoamEstimator() {
   const [estimateNameManuallyEdited, setEstimateNameManuallyEdited] = useState(false);
   const [chargedLaborRateInput, setChargedLaborRateInput] = useState("");
   const [chargedLaborRateError, setChargedLaborRateError] = useState("");
+  const [pricePerSqFtErrors, setPricePerSqFtErrors] = useState({});
+  const [pricePerSqFtInputs, setPricePerSqFtInputs] = useState({});
+  const [laborRateInput, setLaborRateInput] = useState(null);
+  const [chargedLaborRateFocused, setChargedLaborRateFocused] = useState(false);
+  const [wasteDisposalInput, setWasteDisposalInput] = useState(null);
+  const [wasteDisposalFocused, setWasteDisposalFocused] = useState(false);
+  const [materialPriceInputs, setMaterialPriceInputs] = useState({});
+  const [materialPriceFocused, setMaterialPriceFocused] = useState({});
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -206,13 +214,23 @@ export default function SprayFoamEstimator() {
 
   const handleChargedLaborRateChange = (value) => {
     setChargedLaborRateInput(value);
-    const chargedRate = parseFloat(value) || 0;
+  };
+
+  const validateChargedLaborRate = () => {
+    const chargedRate = parseFloat(chargedLaborRateInput) || 0;
     const actualRate = globalInputs.manualLaborRate;
+    
+    if (chargedLaborRateInput === "" || chargedLaborRateInput === null) {
+      setChargedLaborRateError("");
+      setChargedLaborRateInput("");
+      return;
+    }
     
     if (chargedRate < actualRate) {
       setChargedLaborRateError(`Charged rate must be at least $${actualRate.toFixed(2)} (the Actual Labor Rate)`);
     } else {
       setChargedLaborRateError("");
+      setChargedLaborRateInput("");
       if (actualRate > 0) {
         const newMarkup = ((chargedRate / actualRate) - 1) * 100;
         setGlobalInputs({ ...globalInputs, laborMarkup: newMarkup });
@@ -283,6 +301,60 @@ export default function SprayFoamEstimator() {
 
   const removeArea = (index) => {
     setSprayAreas(sprayAreas.filter((_, i) => i !== index));
+    setPricePerSqFtErrors(prev => {
+      const updated = { ...prev };
+      delete updated[index];
+      return updated;
+    });
+  };
+
+  const handlePricePerSqFtInputChange = (index, value) => {
+    setPricePerSqFtInputs(prev => ({ ...prev, [index]: value }));
+  };
+
+  const handlePricePerSqFtBlur = (index, area) => {
+    const value = pricePerSqFtInputs[index];
+    if (value === undefined || value === "") {
+      setPricePerSqFtInputs(prev => {
+        const updated = { ...prev };
+        delete updated[index];
+        return updated;
+      });
+      return;
+    }
+    
+    const newPricePerSqFt = parseFloat(value) || 0;
+    const materialCostPerSet = area.materialPrice * 1.20;
+    const minPricePerSqFt = (area.foamThickness / area.boardFeetPerSet) * materialCostPerSet;
+    
+    const roundedInput = Math.round(newPricePerSqFt * 100) / 100;
+    const roundedMin = Math.round(minPricePerSqFt * 100) / 100;
+    
+    if (roundedInput < roundedMin) {
+      setPricePerSqFtErrors(prev => ({
+        ...prev,
+        [index]: `Price must be at least $${minPricePerSqFt.toFixed(2)} (derived from Material Cost per Set)`
+      }));
+    } else {
+      setPricePerSqFtErrors(prev => {
+        const updated = { ...prev };
+        delete updated[index];
+        return updated;
+      });
+      
+      const pricePerSet = newPricePerSqFt * (area.boardFeetPerSet / area.foamThickness);
+      const newMarkup = ((pricePerSet / materialCostPerSet) - 1) * 100;
+      
+      const updated = [...sprayAreas];
+      updated[index].materialMarkup = Math.max(0, newMarkup);
+      setSprayAreas(updated);
+    }
+    
+    setPricePerSqFtInputs(prev => {
+      const updated = { ...prev };
+      delete updated[index];
+      return updated;
+    });
   };
 
   const resetEstimate = () => {
@@ -300,6 +372,14 @@ export default function SprayFoamEstimator() {
       setEstimateNameManuallyEdited(false);
       setChargedLaborRateError("");
       setChargedLaborRateInput("");
+      setPricePerSqFtErrors({});
+      setPricePerSqFtInputs({});
+      setLaborRateInput(null);
+      setChargedLaborRateFocused(false);
+      setWasteDisposalInput(null);
+      setWasteDisposalFocused(false);
+      setMaterialPriceInputs({});
+      setMaterialPriceFocused({});
     }
   };
 
@@ -602,7 +682,7 @@ export default function SprayFoamEstimator() {
                             type="number"
                             step="0.01"
                             min="0"
-                            value={val}
+                            value={val === 0 ? "" : val}
                             onChange={(e) => handleGlobalChange(key, e.target.value)}
                             className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
@@ -615,12 +695,15 @@ export default function SprayFoamEstimator() {
                               type="number"
                               step="0.01"
                               min="0"
-                              value={chargedLaborRateError ? chargedLaborRateInput : chargedLaborRate.toFixed(2)}
+                              value={chargedLaborRateFocused ? chargedLaborRateInput : (chargedLaborRate === 0 ? "" : chargedLaborRate.toFixed(2))}
                               onChange={(e) => handleChargedLaborRateChange(e.target.value)}
+                              onFocus={() => {
+                                setChargedLaborRateFocused(true);
+                                setChargedLaborRateInput(chargedLaborRate > 0 ? chargedLaborRate.toFixed(2) : "");
+                              }}
                               onBlur={() => {
-                                if (!chargedLaborRateError) {
-                                  setChargedLaborRateInput("");
-                                }
+                                setChargedLaborRateFocused(false);
+                                validateChargedLaborRate();
                               }}
                               disabled={globalInputs.manualLaborRate <= 0}
                               className={`w-full border p-2 rounded-lg ${chargedLaborRateError ? 'border-red-500 focus:ring-2 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'} ${globalInputs.manualLaborRate <= 0 ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
@@ -630,12 +713,47 @@ export default function SprayFoamEstimator() {
                             )}
                           </div>
                         </>
+                      ) : key === 'manualLaborRate' ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={laborRateInput !== null ? laborRateInput : (val === 0 ? "" : val.toFixed(2))}
+                          onChange={(e) => setLaborRateInput(e.target.value)}
+                          onBlur={() => {
+                            if (laborRateInput !== null && laborRateInput !== "") {
+                              handleGlobalChange('manualLaborRate', laborRateInput);
+                            }
+                            setLaborRateInput(null);
+                          }}
+                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      ) : key === 'wasteDisposal' ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={wasteDisposalFocused ? wasteDisposalInput : (val === 0 ? "" : val.toFixed(2))}
+                          onChange={(e) => setWasteDisposalInput(e.target.value)}
+                          onFocus={() => {
+                            setWasteDisposalFocused(true);
+                            setWasteDisposalInput(val > 0 ? val.toFixed(2) : "");
+                          }}
+                          onBlur={() => {
+                            setWasteDisposalFocused(false);
+                            if (wasteDisposalInput !== null && wasteDisposalInput !== "") {
+                              handleGlobalChange('wasteDisposal', wasteDisposalInput);
+                            }
+                            setWasteDisposalInput(null);
+                          }}
+                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
                       ) : (
                         <input
                           type="number"
                           step="0.01"
                           min="0"
-                          value={val}
+                          value={val === 0 ? "" : val}
                           onChange={(e) => handleGlobalChange(key, e.target.value)}
                           className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
@@ -701,12 +819,36 @@ export default function SprayFoamEstimator() {
                                     <option key={opt} value={opt}>{opt}</option>
                                   ))}
                                 </select>
+                              ) : key === 'materialPrice' ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={materialPriceFocused[index] ? materialPriceInputs[index] : (val === 0 ? "" : val.toFixed(2))}
+                                  onChange={(e) => setMaterialPriceInputs(prev => ({ ...prev, [index]: e.target.value }))}
+                                  onFocus={() => {
+                                    setMaterialPriceFocused(prev => ({ ...prev, [index]: true }));
+                                    setMaterialPriceInputs(prev => ({ ...prev, [index]: val > 0 ? val.toFixed(2) : "" }));
+                                  }}
+                                  onBlur={() => {
+                                    setMaterialPriceFocused(prev => ({ ...prev, [index]: false }));
+                                    if (materialPriceInputs[index] !== undefined && materialPriceInputs[index] !== "") {
+                                      updateArea(index, 'materialPrice', materialPriceInputs[index]);
+                                    }
+                                    setMaterialPriceInputs(prev => {
+                                      const updated = { ...prev };
+                                      delete updated[index];
+                                      return updated;
+                                    });
+                                  }}
+                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
                               ) : (
                                 <input
                                   type={typeof val === "number" ? "number" : "text"}
                                   step="0.01"
                                   min="0"
-                                  value={isDisabledByAreaSqFt ? "" : val}
+                                  value={isDisabledByAreaSqFt ? "" : (val === 0 ? "" : val)}
                                   onChange={(e) => updateArea(index, key, e.target.value)}
                                   disabled={isDisabledByAreaSqFt}
                                   className={`w-full border border-gray-300 p-2 rounded-lg ${isDisabledByAreaSqFt ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
@@ -736,14 +878,22 @@ export default function SprayFoamEstimator() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">$/Sq Ft</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            $/Sq Ft
+                            <Tooltip text="Price charged per square foot. Editing this will adjust Material Markup (%)." />
+                          </label>
                           <input
                             type="number"
                             step="0.01"
-                            value={sqft > 0 ? (totalCost / sqft).toFixed(2) : "0.00"}
-                            readOnly
-                            className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
+                            min="0"
+                            value={pricePerSqFtInputs[index] !== undefined ? pricePerSqFtInputs[index] : (sqft > 0 ? (totalCost / sqft).toFixed(2) : "")}
+                            onChange={(e) => handlePricePerSqFtInputChange(index, e.target.value)}
+                            onBlur={() => handlePricePerSqFtBlur(index, area)}
+                            className={`w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${pricePerSqFtErrors[index] ? 'border-red-500' : 'border-gray-300'}`}
                           />
+                          {pricePerSqFtErrors[index] && (
+                            <p className="text-red-600 text-sm mt-1">{pricePerSqFtErrors[index]}</p>
+                          )}
                         </div>
                         {area.areaType === "Roof Deck" && area.areaSqFt > 0 && (
                           <div className="flex items-center col-span-full mt-2">
@@ -800,7 +950,7 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualLaborHours !== null ? actuals.actualLaborHours : globalInputs.laborHours}
+                    value={actuals.actualLaborHours !== null ? (actuals.actualLaborHours === 0 ? "" : actuals.actualLaborHours) : (globalInputs.laborHours === 0 ? "" : globalInputs.laborHours)}
                     onChange={(e) => handleActualsChange("actualLaborHours", e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -811,7 +961,7 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualOpenGallons !== null ? actuals.actualOpenGallons : totalGallons.open.toFixed(1)}
+                    value={actuals.actualOpenGallons !== null ? (actuals.actualOpenGallons === 0 ? "" : actuals.actualOpenGallons) : (totalGallons.open === 0 ? "" : totalGallons.open.toFixed(1))}
                     onChange={(e) => handleActualsChange("actualOpenGallons", e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -822,7 +972,7 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualClosedGallons !== null ? actuals.actualClosedGallons : totalGallons.closed.toFixed(1)}
+                    value={actuals.actualClosedGallons !== null ? (actuals.actualClosedGallons === 0 ? "" : actuals.actualClosedGallons) : (totalGallons.closed === 0 ? "" : totalGallons.closed.toFixed(1))}
                     onChange={(e) => handleActualsChange("actualClosedGallons", e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
