@@ -312,7 +312,10 @@ export default function SprayFoamEstimator() {
     const materialCostPerSet = area.materialPrice * 1.20;
     const minPricePerSqFt = (area.foamThickness / area.boardFeetPerSet) * materialCostPerSet;
     
-    if (newPricePerSqFt < minPricePerSqFt) {
+    const roundedInput = Math.round(newPricePerSqFt * 100) / 100;
+    const roundedMin = Math.round(minPricePerSqFt * 100) / 100;
+    
+    if (roundedInput < roundedMin) {
       setPricePerSqFtErrors(prev => ({
         ...prev,
         [index]: `Price must be at least $${minPricePerSqFt.toFixed(2)} (derived from Material Cost per Set)`
