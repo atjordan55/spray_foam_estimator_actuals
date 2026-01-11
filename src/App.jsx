@@ -690,7 +690,7 @@ export default function SprayFoamEstimator() {
                           type="number"
                           step="0.01"
                           min="0"
-                          value={val === 0 ? "" : val}
+                          value={val === 0 ? "" : (key === 'manualLaborRate' ? val.toFixed(2) : val)}
                           onChange={(e) => handleGlobalChange(key, e.target.value)}
                           className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
