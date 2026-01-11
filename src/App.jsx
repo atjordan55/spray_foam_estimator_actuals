@@ -92,6 +92,8 @@ export default function SprayFoamEstimator() {
   const [wasteDisposalFocused, setWasteDisposalFocused] = useState(false);
   const [materialPriceInputs, setMaterialPriceInputs] = useState({});
   const [materialPriceFocused, setMaterialPriceFocused] = useState({});
+  const [actualsInputs, setActualsInputs] = useState({});
+  const [actualsFocused, setActualsFocused] = useState({});
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -380,6 +382,8 @@ export default function SprayFoamEstimator() {
       setWasteDisposalFocused(false);
       setMaterialPriceInputs({});
       setMaterialPriceFocused({});
+      setActualsInputs({});
+      setActualsFocused({});
     }
   };
 
@@ -961,8 +965,28 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualLaborHours !== null ? (actuals.actualLaborHours === 0 ? "" : actuals.actualLaborHours) : (globalInputs.laborHours === 0 ? "" : globalInputs.laborHours)}
-                    onChange={(e) => handleActualsChange("actualLaborHours", e.target.value)}
+                    value={actualsFocused.laborHours 
+                      ? actualsInputs.laborHours 
+                      : (actuals.actualLaborHours !== null 
+                          ? (actuals.actualLaborHours === 0 ? "" : actuals.actualLaborHours) 
+                          : (globalInputs.laborHours === 0 ? "" : globalInputs.laborHours))}
+                    onChange={(e) => setActualsInputs(prev => ({ ...prev, laborHours: e.target.value }))}
+                    onFocus={() => {
+                      setActualsFocused(prev => ({ ...prev, laborHours: true }));
+                      const currentVal = actuals.actualLaborHours !== null ? actuals.actualLaborHours : globalInputs.laborHours;
+                      setActualsInputs(prev => ({ ...prev, laborHours: currentVal > 0 ? String(currentVal) : "" }));
+                    }}
+                    onBlur={() => {
+                      setActualsFocused(prev => ({ ...prev, laborHours: false }));
+                      if (actualsInputs.laborHours !== undefined && actualsInputs.laborHours !== "") {
+                        handleActualsChange("actualLaborHours", actualsInputs.laborHours);
+                      }
+                      setActualsInputs(prev => {
+                        const updated = { ...prev };
+                        delete updated.laborHours;
+                        return updated;
+                      });
+                    }}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
@@ -972,8 +996,28 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualOpenGallons !== null ? (actuals.actualOpenGallons === 0 ? "" : actuals.actualOpenGallons) : (totalGallons.open === 0 ? "" : totalGallons.open.toFixed(1))}
-                    onChange={(e) => handleActualsChange("actualOpenGallons", e.target.value)}
+                    value={actualsFocused.openGallons 
+                      ? actualsInputs.openGallons 
+                      : (actuals.actualOpenGallons !== null 
+                          ? (actuals.actualOpenGallons === 0 ? "" : actuals.actualOpenGallons.toFixed(1)) 
+                          : (totalGallons.open === 0 ? "" : totalGallons.open.toFixed(1)))}
+                    onChange={(e) => setActualsInputs(prev => ({ ...prev, openGallons: e.target.value }))}
+                    onFocus={() => {
+                      setActualsFocused(prev => ({ ...prev, openGallons: true }));
+                      const currentVal = actuals.actualOpenGallons !== null ? actuals.actualOpenGallons : totalGallons.open;
+                      setActualsInputs(prev => ({ ...prev, openGallons: currentVal > 0 ? currentVal.toFixed(1) : "" }));
+                    }}
+                    onBlur={() => {
+                      setActualsFocused(prev => ({ ...prev, openGallons: false }));
+                      if (actualsInputs.openGallons !== undefined && actualsInputs.openGallons !== "") {
+                        handleActualsChange("actualOpenGallons", actualsInputs.openGallons);
+                      }
+                      setActualsInputs(prev => {
+                        const updated = { ...prev };
+                        delete updated.openGallons;
+                        return updated;
+                      });
+                    }}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
@@ -983,8 +1027,28 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualClosedGallons !== null ? (actuals.actualClosedGallons === 0 ? "" : actuals.actualClosedGallons) : (totalGallons.closed === 0 ? "" : totalGallons.closed.toFixed(1))}
-                    onChange={(e) => handleActualsChange("actualClosedGallons", e.target.value)}
+                    value={actualsFocused.closedGallons 
+                      ? actualsInputs.closedGallons 
+                      : (actuals.actualClosedGallons !== null 
+                          ? (actuals.actualClosedGallons === 0 ? "" : actuals.actualClosedGallons.toFixed(1)) 
+                          : (totalGallons.closed === 0 ? "" : totalGallons.closed.toFixed(1)))}
+                    onChange={(e) => setActualsInputs(prev => ({ ...prev, closedGallons: e.target.value }))}
+                    onFocus={() => {
+                      setActualsFocused(prev => ({ ...prev, closedGallons: true }));
+                      const currentVal = actuals.actualClosedGallons !== null ? actuals.actualClosedGallons : totalGallons.closed;
+                      setActualsInputs(prev => ({ ...prev, closedGallons: currentVal > 0 ? currentVal.toFixed(1) : "" }));
+                    }}
+                    onBlur={() => {
+                      setActualsFocused(prev => ({ ...prev, closedGallons: false }));
+                      if (actualsInputs.closedGallons !== undefined && actualsInputs.closedGallons !== "") {
+                        handleActualsChange("actualClosedGallons", actualsInputs.closedGallons);
+                      }
+                      setActualsInputs(prev => {
+                        const updated = { ...prev };
+                        delete updated.closedGallons;
+                        return updated;
+                      });
+                    }}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
