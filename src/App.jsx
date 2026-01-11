@@ -263,7 +263,7 @@ export default function SprayFoamEstimator() {
         } else if (value === "Closed") {
           updated[index].foamThickness = 2;
           updated[index].materialPrice = 2470;
-          updated[index].materialMarkup = 60;
+          updated[index].materialMarkup = 60.25;
           updated[index].boardFeetPerSet = 4000;
         }
       }
