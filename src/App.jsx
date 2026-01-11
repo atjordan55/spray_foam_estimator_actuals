@@ -209,13 +209,23 @@ export default function SprayFoamEstimator() {
 
   const handleChargedLaborRateChange = (value) => {
     setChargedLaborRateInput(value);
-    const chargedRate = parseFloat(value) || 0;
+  };
+
+  const validateChargedLaborRate = () => {
+    const chargedRate = parseFloat(chargedLaborRateInput) || 0;
     const actualRate = globalInputs.manualLaborRate;
+    
+    if (chargedLaborRateInput === "" || chargedLaborRateInput === null) {
+      setChargedLaborRateError("");
+      setChargedLaborRateInput("");
+      return;
+    }
     
     if (chargedRate < actualRate) {
       setChargedLaborRateError(`Charged rate must be at least $${actualRate.toFixed(2)} (the Actual Labor Rate)`);
     } else {
       setChargedLaborRateError("");
+      setChargedLaborRateInput("");
       if (actualRate > 0) {
         const newMarkup = ((chargedRate / actualRate) - 1) * 100;
         setGlobalInputs({ ...globalInputs, laborMarkup: newMarkup });
@@ -675,13 +685,14 @@ export default function SprayFoamEstimator() {
                               type="number"
                               step="0.01"
                               min="0"
-                              value={chargedLaborRateError ? chargedLaborRateInput : (chargedLaborRate === 0 ? "" : chargedLaborRate.toFixed(2))}
+                              value={chargedLaborRateInput !== "" ? chargedLaborRateInput : (chargedLaborRate === 0 ? "" : chargedLaborRate.toFixed(2))}
                               onChange={(e) => handleChargedLaborRateChange(e.target.value)}
-                              onBlur={() => {
-                                if (!chargedLaborRateError) {
-                                  setChargedLaborRateInput("");
+                              onFocus={() => {
+                                if (chargedLaborRateInput === "" && chargedLaborRate > 0) {
+                                  setChargedLaborRateInput(chargedLaborRate.toFixed(2));
                                 }
                               }}
+                              onBlur={() => validateChargedLaborRate()}
                               disabled={globalInputs.manualLaborRate <= 0}
                               className={`w-full border p-2 rounded-lg ${chargedLaborRateError ? 'border-red-500 focus:ring-2 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'} ${globalInputs.manualLaborRate <= 0 ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
                             />
