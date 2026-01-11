@@ -86,6 +86,7 @@ export default function SprayFoamEstimator() {
   const [chargedLaborRateError, setChargedLaborRateError] = useState("");
   const [pricePerSqFtErrors, setPricePerSqFtErrors] = useState({});
   const [pricePerSqFtInputs, setPricePerSqFtInputs] = useState({});
+  const [laborRateInput, setLaborRateInput] = useState(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -355,6 +356,7 @@ export default function SprayFoamEstimator() {
       setChargedLaborRateInput("");
       setPricePerSqFtErrors({});
       setPricePerSqFtInputs({});
+      setLaborRateInput(null);
     }
   };
 
@@ -685,12 +687,27 @@ export default function SprayFoamEstimator() {
                             )}
                           </div>
                         </>
+                      ) : key === 'manualLaborRate' ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={laborRateInput !== null ? laborRateInput : (val === 0 ? "" : val.toFixed(2))}
+                          onChange={(e) => setLaborRateInput(e.target.value)}
+                          onBlur={() => {
+                            if (laborRateInput !== null && laborRateInput !== "") {
+                              handleGlobalChange('manualLaborRate', laborRateInput);
+                            }
+                            setLaborRateInput(null);
+                          }}
+                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
                       ) : (
                         <input
                           type="number"
                           step="0.01"
                           min="0"
-                          value={val === 0 ? "" : (key === 'manualLaborRate' ? val.toFixed(2) : val)}
+                          value={val === 0 ? "" : val}
                           onChange={(e) => handleGlobalChange(key, e.target.value)}
                           className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
