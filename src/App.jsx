@@ -92,6 +92,8 @@ export default function SprayFoamEstimator() {
   const [wasteDisposalFocused, setWasteDisposalFocused] = useState(false);
   const [materialPriceInputs, setMaterialPriceInputs] = useState({});
   const [materialPriceFocused, setMaterialPriceFocused] = useState({});
+  const [actualsInputs, setActualsInputs] = useState({});
+  const [actualsFocused, setActualsFocused] = useState({});
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -261,7 +263,7 @@ export default function SprayFoamEstimator() {
         } else if (value === "Closed") {
           updated[index].foamThickness = 2;
           updated[index].materialPrice = 2470;
-          updated[index].materialMarkup = 60;
+          updated[index].materialMarkup = 60.25;
           updated[index].boardFeetPerSet = 4000;
         }
       }
@@ -380,6 +382,8 @@ export default function SprayFoamEstimator() {
       setWasteDisposalFocused(false);
       setMaterialPriceInputs({});
       setMaterialPriceFocused({});
+      setActualsInputs({});
+      setActualsFocused({});
     }
   };
 
@@ -519,6 +523,17 @@ export default function SprayFoamEstimator() {
   const actualMargin = actualCustomerCost > 0 ? (actualProfit / actualCustomerCost) * 100 : 0;
   const marginColor = profitMargin < 25 ? "text-red-600" : profitMargin < 30 ? "text-yellow-600" : "text-green-600";
   const actualMarginColor = actualMargin < 25 ? "text-red-600" : actualMargin < 30 ? "text-yellow-600" : "text-green-600";
+  
+  const getJobNetProfitColor = (margin) => {
+    if (margin >= 35) return "text-green-600";
+    if (margin >= 30) return "text-yellow-600";
+    return "text-red-600";
+  };
+  
+  const estimatedJobNetProfit = customerCost - totalBaseCost;
+  const estimatedJobNetProfitMargin = customerCost > 0 ? (estimatedJobNetProfit / customerCost) * 100 : 0;
+  const actualJobNetProfit = customerCost - actualBaseCost;
+  const actualJobNetProfitMargin = customerCost > 0 ? (actualJobNetProfit / customerCost) * 100 : 0;
 
   const pitchOptions = Array.from({ length: 12 }, (_, i) => `${i + 1}/12`);
   const chargedLaborRate = globalInputs.manualLaborRate * (1 + (globalInputs.laborMarkup / 100));
@@ -950,8 +965,28 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualLaborHours !== null ? (actuals.actualLaborHours === 0 ? "" : actuals.actualLaborHours) : (globalInputs.laborHours === 0 ? "" : globalInputs.laborHours)}
-                    onChange={(e) => handleActualsChange("actualLaborHours", e.target.value)}
+                    value={actualsFocused.laborHours 
+                      ? actualsInputs.laborHours 
+                      : (actuals.actualLaborHours !== null 
+                          ? (actuals.actualLaborHours === 0 ? "" : actuals.actualLaborHours) 
+                          : (globalInputs.laborHours === 0 ? "" : globalInputs.laborHours))}
+                    onChange={(e) => setActualsInputs(prev => ({ ...prev, laborHours: e.target.value }))}
+                    onFocus={() => {
+                      setActualsFocused(prev => ({ ...prev, laborHours: true }));
+                      const currentVal = actuals.actualLaborHours !== null ? actuals.actualLaborHours : globalInputs.laborHours;
+                      setActualsInputs(prev => ({ ...prev, laborHours: currentVal > 0 ? String(currentVal) : "" }));
+                    }}
+                    onBlur={() => {
+                      setActualsFocused(prev => ({ ...prev, laborHours: false }));
+                      if (actualsInputs.laborHours !== undefined && actualsInputs.laborHours !== "") {
+                        handleActualsChange("actualLaborHours", actualsInputs.laborHours);
+                      }
+                      setActualsInputs(prev => {
+                        const updated = { ...prev };
+                        delete updated.laborHours;
+                        return updated;
+                      });
+                    }}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
@@ -961,8 +996,28 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualOpenGallons !== null ? (actuals.actualOpenGallons === 0 ? "" : actuals.actualOpenGallons) : (totalGallons.open === 0 ? "" : totalGallons.open.toFixed(1))}
-                    onChange={(e) => handleActualsChange("actualOpenGallons", e.target.value)}
+                    value={actualsFocused.openGallons 
+                      ? actualsInputs.openGallons 
+                      : (actuals.actualOpenGallons !== null 
+                          ? (actuals.actualOpenGallons === 0 ? "" : actuals.actualOpenGallons.toFixed(1)) 
+                          : (totalGallons.open === 0 ? "" : totalGallons.open.toFixed(1)))}
+                    onChange={(e) => setActualsInputs(prev => ({ ...prev, openGallons: e.target.value }))}
+                    onFocus={() => {
+                      setActualsFocused(prev => ({ ...prev, openGallons: true }));
+                      const currentVal = actuals.actualOpenGallons !== null ? actuals.actualOpenGallons : totalGallons.open;
+                      setActualsInputs(prev => ({ ...prev, openGallons: currentVal > 0 ? currentVal.toFixed(1) : "" }));
+                    }}
+                    onBlur={() => {
+                      setActualsFocused(prev => ({ ...prev, openGallons: false }));
+                      if (actualsInputs.openGallons !== undefined && actualsInputs.openGallons !== "") {
+                        handleActualsChange("actualOpenGallons", actualsInputs.openGallons);
+                      }
+                      setActualsInputs(prev => {
+                        const updated = { ...prev };
+                        delete updated.openGallons;
+                        return updated;
+                      });
+                    }}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
@@ -972,8 +1027,28 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualClosedGallons !== null ? (actuals.actualClosedGallons === 0 ? "" : actuals.actualClosedGallons) : (totalGallons.closed === 0 ? "" : totalGallons.closed.toFixed(1))}
-                    onChange={(e) => handleActualsChange("actualClosedGallons", e.target.value)}
+                    value={actualsFocused.closedGallons 
+                      ? actualsInputs.closedGallons 
+                      : (actuals.actualClosedGallons !== null 
+                          ? (actuals.actualClosedGallons === 0 ? "" : actuals.actualClosedGallons.toFixed(1)) 
+                          : (totalGallons.closed === 0 ? "" : totalGallons.closed.toFixed(1)))}
+                    onChange={(e) => setActualsInputs(prev => ({ ...prev, closedGallons: e.target.value }))}
+                    onFocus={() => {
+                      setActualsFocused(prev => ({ ...prev, closedGallons: true }));
+                      const currentVal = actuals.actualClosedGallons !== null ? actuals.actualClosedGallons : totalGallons.closed;
+                      setActualsInputs(prev => ({ ...prev, closedGallons: currentVal > 0 ? currentVal.toFixed(1) : "" }));
+                    }}
+                    onBlur={() => {
+                      setActualsFocused(prev => ({ ...prev, closedGallons: false }));
+                      if (actualsInputs.closedGallons !== undefined && actualsInputs.closedGallons !== "") {
+                        handleActualsChange("actualClosedGallons", actualsInputs.closedGallons);
+                      }
+                      setActualsInputs(prev => {
+                        const updated = { ...prev };
+                        delete updated.closedGallons;
+                        return updated;
+                      });
+                    }}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
@@ -1044,6 +1119,14 @@ export default function SprayFoamEstimator() {
                           ${(actualBaseCost - totalBaseCost).toFixed(2)}
                         </td>
                       </tr>
+                      <tr className="font-bold">
+                        <td className="py-2 pr-2">Job Net Profit</td>
+                        <td className={`py-2 px-2 text-right ${getJobNetProfitColor(estimatedJobNetProfitMargin)}`}>${estimatedJobNetProfit.toFixed(2)}</td>
+                        <td className={`py-2 px-2 text-right ${getJobNetProfitColor(actualJobNetProfitMargin)}`}>${actualJobNetProfit.toFixed(2)}</td>
+                        <td className={`py-2 pl-2 text-right ${actualJobNetProfit - estimatedJobNetProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          ${(actualJobNetProfit - estimatedJobNetProfit).toFixed(2)}
+                        </td>
+                      </tr>
                       <tr>
                         <td className="py-2 pr-2 text-gray-600">Sales Commission</td>
                         <td className="py-2 px-2 text-right">${salesCommission.toFixed(2)}</td>
@@ -1053,7 +1136,7 @@ export default function SprayFoamEstimator() {
                         </td>
                       </tr>
                       <tr className="font-bold">
-                        <td className="py-2 pr-2">Profit</td>
+                        <td className="py-2 pr-2">Final Profit</td>
                         <td className={`py-2 px-2 text-right ${marginColor}`}>${estimatedProfit.toFixed(2)}</td>
                         <td className={`py-2 px-2 text-right ${actualMarginColor}`}>${actualProfit.toFixed(2)}</td>
                         <td className={`py-2 pl-2 text-right ${actualProfit - estimatedProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -1125,6 +1208,10 @@ export default function SprayFoamEstimator() {
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
+                    <div className={`flex justify-between py-1 font-bold ${getJobNetProfitColor(estimatedJobNetProfitMargin)}`}>
+                      <span>Estimated Job Net Profit:</span>
+                      <span>${estimatedJobNetProfit.toFixed(2)} ({estimatedJobNetProfitMargin.toFixed(1)}%)</span>
+                    </div>
                     <div className="flex justify-between py-1">
                       <span className="text-gray-600">Sales Commission {profitMarginBeforeCommission >= 35 ? '(12%)' : profitMarginBeforeCommission >= 30 ? '(10%)' : '(0%)'}:</span>
                       <span>${salesCommission.toFixed(2)}</span>
@@ -1135,7 +1222,7 @@ export default function SprayFoamEstimator() {
                     </div>
                     <hr className="my-3" />
                     <div className={`flex justify-between py-1 font-bold text-lg ${marginColor}`}>
-                      <span>Estimated Profit:</span>
+                      <span>Final Estimated Profit:</span>
                       <span>${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</span>
                     </div>
                   </div>
@@ -1161,6 +1248,10 @@ export default function SprayFoamEstimator() {
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
+                    <div className={`flex justify-between py-1 font-bold ${getJobNetProfitColor(actualJobNetProfitMargin)}`}>
+                      <span>Actual Job Net Profit:</span>
+                      <span>${actualJobNetProfit.toFixed(2)} ({actualJobNetProfitMargin.toFixed(1)}%)</span>
+                    </div>
                     <div className="flex justify-between py-1">
                       <span className="text-gray-600">Sales Commission {actualProfitMarginBeforeCommission >= 35 ? '(12%)' : actualProfitMarginBeforeCommission >= 30 ? '(10%)' : '(0%)'}:</span>
                       <span>${actualSalesCommission.toFixed(2)}</span>
@@ -1171,7 +1262,7 @@ export default function SprayFoamEstimator() {
                     </div>
                     <hr className="my-3" />
                     <div className={`flex justify-between py-1 font-bold text-lg ${actualMarginColor}`}>
-                      <span>Actual Profit:</span>
+                      <span>Final Actual Profit:</span>
                       <span>${actualProfit.toFixed(2)} ({actualMargin.toFixed(1)}%)</span>
                     </div>
                   </div>
