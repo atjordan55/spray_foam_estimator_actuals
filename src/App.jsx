@@ -519,6 +519,17 @@ export default function SprayFoamEstimator() {
   const actualMargin = actualCustomerCost > 0 ? (actualProfit / actualCustomerCost) * 100 : 0;
   const marginColor = profitMargin < 25 ? "text-red-600" : profitMargin < 30 ? "text-yellow-600" : "text-green-600";
   const actualMarginColor = actualMargin < 25 ? "text-red-600" : actualMargin < 30 ? "text-yellow-600" : "text-green-600";
+  
+  const getJobNetProfitColor = (margin) => {
+    if (margin >= 35) return "text-green-600";
+    if (margin >= 30) return "text-yellow-600";
+    return "text-red-600";
+  };
+  
+  const estimatedJobNetProfit = customerCost - totalBaseCost;
+  const estimatedJobNetProfitMargin = customerCost > 0 ? (estimatedJobNetProfit / customerCost) * 100 : 0;
+  const actualJobNetProfit = customerCost - actualBaseCost;
+  const actualJobNetProfitMargin = customerCost > 0 ? (actualJobNetProfit / customerCost) * 100 : 0;
 
   const pitchOptions = Array.from({ length: 12 }, (_, i) => `${i + 1}/12`);
   const chargedLaborRate = globalInputs.manualLaborRate * (1 + (globalInputs.laborMarkup / 100));
@@ -1044,6 +1055,14 @@ export default function SprayFoamEstimator() {
                           ${(actualBaseCost - totalBaseCost).toFixed(2)}
                         </td>
                       </tr>
+                      <tr className="font-bold">
+                        <td className="py-2 pr-2">Job Net Profit</td>
+                        <td className={`py-2 px-2 text-right ${getJobNetProfitColor(estimatedJobNetProfitMargin)}`}>${estimatedJobNetProfit.toFixed(2)}</td>
+                        <td className={`py-2 px-2 text-right ${getJobNetProfitColor(actualJobNetProfitMargin)}`}>${actualJobNetProfit.toFixed(2)}</td>
+                        <td className={`py-2 pl-2 text-right ${actualJobNetProfit - estimatedJobNetProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          ${(actualJobNetProfit - estimatedJobNetProfit).toFixed(2)}
+                        </td>
+                      </tr>
                       <tr>
                         <td className="py-2 pr-2 text-gray-600">Sales Commission</td>
                         <td className="py-2 px-2 text-right">${salesCommission.toFixed(2)}</td>
@@ -1053,7 +1072,7 @@ export default function SprayFoamEstimator() {
                         </td>
                       </tr>
                       <tr className="font-bold">
-                        <td className="py-2 pr-2">Profit</td>
+                        <td className="py-2 pr-2">Final Profit</td>
                         <td className={`py-2 px-2 text-right ${marginColor}`}>${estimatedProfit.toFixed(2)}</td>
                         <td className={`py-2 px-2 text-right ${actualMarginColor}`}>${actualProfit.toFixed(2)}</td>
                         <td className={`py-2 pl-2 text-right ${actualProfit - estimatedProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -1125,6 +1144,10 @@ export default function SprayFoamEstimator() {
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
+                    <div className={`flex justify-between py-1 font-bold ${getJobNetProfitColor(estimatedJobNetProfitMargin)}`}>
+                      <span>Estimated Job Net Profit:</span>
+                      <span>${estimatedJobNetProfit.toFixed(2)} ({estimatedJobNetProfitMargin.toFixed(1)}%)</span>
+                    </div>
                     <div className="flex justify-between py-1">
                       <span className="text-gray-600">Sales Commission {profitMarginBeforeCommission >= 35 ? '(12%)' : profitMarginBeforeCommission >= 30 ? '(10%)' : '(0%)'}:</span>
                       <span>${salesCommission.toFixed(2)}</span>
@@ -1135,7 +1158,7 @@ export default function SprayFoamEstimator() {
                     </div>
                     <hr className="my-3" />
                     <div className={`flex justify-between py-1 font-bold text-lg ${marginColor}`}>
-                      <span>Estimated Profit:</span>
+                      <span>Final Estimated Profit:</span>
                       <span>${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</span>
                     </div>
                   </div>
@@ -1161,6 +1184,10 @@ export default function SprayFoamEstimator() {
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
+                    <div className={`flex justify-between py-1 font-bold ${getJobNetProfitColor(actualJobNetProfitMargin)}`}>
+                      <span>Actual Job Net Profit:</span>
+                      <span>${actualJobNetProfit.toFixed(2)} ({actualJobNetProfitMargin.toFixed(1)}%)</span>
+                    </div>
                     <div className="flex justify-between py-1">
                       <span className="text-gray-600">Sales Commission {actualProfitMarginBeforeCommission >= 35 ? '(12%)' : actualProfitMarginBeforeCommission >= 30 ? '(10%)' : '(0%)'}:</span>
                       <span>${actualSalesCommission.toFixed(2)}</span>
@@ -1171,7 +1198,7 @@ export default function SprayFoamEstimator() {
                     </div>
                     <hr className="my-3" />
                     <div className={`flex justify-between py-1 font-bold text-lg ${actualMarginColor}`}>
-                      <span>Actual Profit:</span>
+                      <span>Final Actual Profit:</span>
                       <span>${actualProfit.toFixed(2)} ({actualMargin.toFixed(1)}%)</span>
                     </div>
                   </div>
