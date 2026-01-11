@@ -85,6 +85,7 @@ export default function SprayFoamEstimator() {
   const [chargedLaborRateInput, setChargedLaborRateInput] = useState("");
   const [chargedLaborRateError, setChargedLaborRateError] = useState("");
   const [pricePerSqFtErrors, setPricePerSqFtErrors] = useState({});
+  const [pricePerSqFtInputs, setPricePerSqFtInputs] = useState({});
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -291,7 +292,21 @@ export default function SprayFoamEstimator() {
     });
   };
 
-  const handlePricePerSqFtChange = (index, value, area) => {
+  const handlePricePerSqFtInputChange = (index, value) => {
+    setPricePerSqFtInputs(prev => ({ ...prev, [index]: value }));
+  };
+
+  const handlePricePerSqFtBlur = (index, area) => {
+    const value = pricePerSqFtInputs[index];
+    if (value === undefined || value === "") {
+      setPricePerSqFtInputs(prev => {
+        const updated = { ...prev };
+        delete updated[index];
+        return updated;
+      });
+      return;
+    }
+    
     const newPricePerSqFt = parseFloat(value) || 0;
     const materialCostPerSet = area.materialPrice * 1.20;
     const minPricePerSqFt = (area.foamThickness / area.boardFeetPerSet) * materialCostPerSet;
@@ -299,7 +314,7 @@ export default function SprayFoamEstimator() {
     if (newPricePerSqFt < minPricePerSqFt) {
       setPricePerSqFtErrors(prev => ({
         ...prev,
-        [index]: `Price must be at least $${minPricePerSqFt.toFixed(4)} (derived from Material Cost per Set)`
+        [index]: `Price must be at least $${minPricePerSqFt.toFixed(2)} (derived from Material Cost per Set)`
       }));
     } else {
       setPricePerSqFtErrors(prev => {
@@ -315,6 +330,12 @@ export default function SprayFoamEstimator() {
       updated[index].materialMarkup = Math.max(0, newMarkup);
       setSprayAreas(updated);
     }
+    
+    setPricePerSqFtInputs(prev => {
+      const updated = { ...prev };
+      delete updated[index];
+      return updated;
+    });
   };
 
   const resetEstimate = () => {
@@ -333,6 +354,7 @@ export default function SprayFoamEstimator() {
       setChargedLaborRateError("");
       setChargedLaborRateInput("");
       setPricePerSqFtErrors({});
+      setPricePerSqFtInputs({});
     }
   };
 
@@ -635,7 +657,7 @@ export default function SprayFoamEstimator() {
                             type="number"
                             step="0.01"
                             min="0"
-                            value={val}
+                            value={val === 0 ? "" : val}
                             onChange={(e) => handleGlobalChange(key, e.target.value)}
                             className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
@@ -648,7 +670,7 @@ export default function SprayFoamEstimator() {
                               type="number"
                               step="0.01"
                               min="0"
-                              value={chargedLaborRateError ? chargedLaborRateInput : chargedLaborRate.toFixed(2)}
+                              value={chargedLaborRateError ? chargedLaborRateInput : (chargedLaborRate === 0 ? "" : chargedLaborRate.toFixed(2))}
                               onChange={(e) => handleChargedLaborRateChange(e.target.value)}
                               onBlur={() => {
                                 if (!chargedLaborRateError) {
@@ -668,7 +690,7 @@ export default function SprayFoamEstimator() {
                           type="number"
                           step="0.01"
                           min="0"
-                          value={val}
+                          value={val === 0 ? "" : val}
                           onChange={(e) => handleGlobalChange(key, e.target.value)}
                           className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
@@ -739,7 +761,7 @@ export default function SprayFoamEstimator() {
                                   type={typeof val === "number" ? "number" : "text"}
                                   step="0.01"
                                   min="0"
-                                  value={isDisabledByAreaSqFt ? "" : val}
+                                  value={isDisabledByAreaSqFt ? "" : (val === 0 ? "" : val)}
                                   onChange={(e) => updateArea(index, key, e.target.value)}
                                   disabled={isDisabledByAreaSqFt}
                                   className={`w-full border border-gray-300 p-2 rounded-lg ${isDisabledByAreaSqFt ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
@@ -775,10 +797,11 @@ export default function SprayFoamEstimator() {
                           </label>
                           <input
                             type="number"
-                            step="0.0001"
+                            step="0.01"
                             min="0"
-                            value={sqft > 0 ? (totalCost / sqft).toFixed(4) : "0.0000"}
-                            onChange={(e) => handlePricePerSqFtChange(index, e.target.value, area)}
+                            value={pricePerSqFtInputs[index] !== undefined ? pricePerSqFtInputs[index] : (sqft > 0 ? (totalCost / sqft).toFixed(2) : "")}
+                            onChange={(e) => handlePricePerSqFtInputChange(index, e.target.value)}
+                            onBlur={() => handlePricePerSqFtBlur(index, area)}
                             className={`w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${pricePerSqFtErrors[index] ? 'border-red-500' : 'border-gray-300'}`}
                           />
                           {pricePerSqFtErrors[index] && (
@@ -840,7 +863,7 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualLaborHours !== null ? actuals.actualLaborHours : globalInputs.laborHours}
+                    value={actuals.actualLaborHours !== null ? (actuals.actualLaborHours === 0 ? "" : actuals.actualLaborHours) : (globalInputs.laborHours === 0 ? "" : globalInputs.laborHours)}
                     onChange={(e) => handleActualsChange("actualLaborHours", e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -851,7 +874,7 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualOpenGallons !== null ? actuals.actualOpenGallons : totalGallons.open.toFixed(1)}
+                    value={actuals.actualOpenGallons !== null ? (actuals.actualOpenGallons === 0 ? "" : actuals.actualOpenGallons) : (totalGallons.open === 0 ? "" : totalGallons.open.toFixed(1))}
                     onChange={(e) => handleActualsChange("actualOpenGallons", e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -862,7 +885,7 @@ export default function SprayFoamEstimator() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={actuals.actualClosedGallons !== null ? actuals.actualClosedGallons : totalGallons.closed.toFixed(1)}
+                    value={actuals.actualClosedGallons !== null ? (actuals.actualClosedGallons === 0 ? "" : actuals.actualClosedGallons) : (totalGallons.closed === 0 ? "" : totalGallons.closed.toFixed(1))}
                     onChange={(e) => handleActualsChange("actualClosedGallons", e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
