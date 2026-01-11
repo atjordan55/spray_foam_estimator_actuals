@@ -84,6 +84,7 @@ export default function SprayFoamEstimator() {
   const [estimateNameManuallyEdited, setEstimateNameManuallyEdited] = useState(false);
   const [chargedLaborRateInput, setChargedLaborRateInput] = useState("");
   const [chargedLaborRateError, setChargedLaborRateError] = useState("");
+  const [pricePerSqFtErrors, setPricePerSqFtErrors] = useState({});
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -283,6 +284,37 @@ export default function SprayFoamEstimator() {
 
   const removeArea = (index) => {
     setSprayAreas(sprayAreas.filter((_, i) => i !== index));
+    setPricePerSqFtErrors(prev => {
+      const updated = { ...prev };
+      delete updated[index];
+      return updated;
+    });
+  };
+
+  const handlePricePerSqFtChange = (index, value, area) => {
+    const newPricePerSqFt = parseFloat(value) || 0;
+    const materialCostPerSet = area.materialPrice * 1.20;
+    const minPricePerSqFt = (area.foamThickness / area.boardFeetPerSet) * materialCostPerSet;
+    
+    if (newPricePerSqFt < minPricePerSqFt) {
+      setPricePerSqFtErrors(prev => ({
+        ...prev,
+        [index]: `Price must be at least $${minPricePerSqFt.toFixed(4)} (derived from Material Cost per Set)`
+      }));
+    } else {
+      setPricePerSqFtErrors(prev => {
+        const updated = { ...prev };
+        delete updated[index];
+        return updated;
+      });
+      
+      const pricePerSet = newPricePerSqFt * (area.boardFeetPerSet / area.foamThickness);
+      const newMarkup = ((pricePerSet / materialCostPerSet) - 1) * 100;
+      
+      const updated = [...sprayAreas];
+      updated[index].materialMarkup = Math.max(0, newMarkup);
+      setSprayAreas(updated);
+    }
   };
 
   const resetEstimate = () => {
@@ -300,6 +332,7 @@ export default function SprayFoamEstimator() {
       setEstimateNameManuallyEdited(false);
       setChargedLaborRateError("");
       setChargedLaborRateInput("");
+      setPricePerSqFtErrors({});
     }
   };
 
@@ -736,14 +769,21 @@ export default function SprayFoamEstimator() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">$/Sq Ft</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            $/Sq Ft
+                            <Tooltip text="Price charged per square foot. Editing this will adjust Material Markup (%)." />
+                          </label>
                           <input
                             type="number"
-                            step="0.01"
-                            value={sqft > 0 ? (totalCost / sqft).toFixed(2) : "0.00"}
-                            readOnly
-                            className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
+                            step="0.0001"
+                            min="0"
+                            value={sqft > 0 ? (totalCost / sqft).toFixed(4) : "0.0000"}
+                            onChange={(e) => handlePricePerSqFtChange(index, e.target.value, area)}
+                            className={`w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${pricePerSqFtErrors[index] ? 'border-red-500' : 'border-gray-300'}`}
                           />
+                          {pricePerSqFtErrors[index] && (
+                            <p className="text-red-600 text-sm mt-1">{pricePerSqFtErrors[index]}</p>
+                          )}
                         </div>
                         {area.areaType === "Roof Deck" && area.areaSqFt > 0 && (
                           <div className="flex items-center col-span-full mt-2">

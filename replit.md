@@ -41,11 +41,13 @@ Preferred communication style: Simple, everyday language.
 - **Mobile Responsive**: Optimized layout for tablets and phones
 
 ### Project Areas Improvements
-- **Area (Sq Ft) Field**: New editable field to enter known square footage directly
-- **Optional Length/Width**: Length and Width fields are now optional - only needed if calculating from dimensions
-- **Smart Calculation**: Uses Area (Sq Ft) if provided; otherwise calculates from Length × Width
-- **Area Type Adjustments**: Roof Deck pitch multiplier and Gable half-area only apply when using Length × Width calculation
-- **Apply Pitch to Manual Area**: Checkbox option for Roof Deck areas to apply pitch multiplier even when entering Area (Sq Ft) directly
+- **Area (Sq Ft) Field**: Editable field to enter known square footage directly
+- **Mutual Exclusivity**: Area (Sq Ft) and Length/Width are mutually exclusive - entering one disables/clears the other
+- **Length/Width Disabled**: When Area (Sq Ft) > 0, Length and Width fields are greyed out and blank
+- **Area Resets**: When Length or Width > 0, Area (Sq Ft) resets to 0
+- **Apply Pitch to Manual Area**: Checkbox only visible when Area Type is Roof Deck AND Area (Sq Ft) > 0
+- **Editable $/Sq Ft**: Can directly edit price per square foot - updates Material Markup (%) and $/Per Set accordingly
+- **$/Sq Ft Validation**: Cannot be lower than minimum derived from Material Cost per Set (shows error message)
 
 ### Sales Commission Logic
 - Sales commission is now calculated based on profit margin thresholds:
