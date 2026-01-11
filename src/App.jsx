@@ -40,10 +40,10 @@ const getDefaultState = () => ({
   projectNotes: "",
   globalInputs: {
     laborHours: 0,
-    manualLaborRate: 50,
+    manualLaborRate: 65,
     laborMarkup: 40,
     travelDistance: 50,
-    travelRate: 0.68,
+    travelRate: 0.70,
     wasteDisposal: 50,
     equipmentRental: 0
   },
@@ -88,6 +88,10 @@ export default function SprayFoamEstimator() {
   const [pricePerSqFtInputs, setPricePerSqFtInputs] = useState({});
   const [laborRateInput, setLaborRateInput] = useState(null);
   const [chargedLaborRateFocused, setChargedLaborRateFocused] = useState(false);
+  const [wasteDisposalInput, setWasteDisposalInput] = useState(null);
+  const [wasteDisposalFocused, setWasteDisposalFocused] = useState(false);
+  const [materialPriceInputs, setMaterialPriceInputs] = useState({});
+  const [materialPriceFocused, setMaterialPriceFocused] = useState({});
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -372,6 +376,10 @@ export default function SprayFoamEstimator() {
       setPricePerSqFtInputs({});
       setLaborRateInput(null);
       setChargedLaborRateFocused(false);
+      setWasteDisposalInput(null);
+      setWasteDisposalFocused(false);
+      setMaterialPriceInputs({});
+      setMaterialPriceFocused({});
     }
   };
 
@@ -720,6 +728,26 @@ export default function SprayFoamEstimator() {
                           }}
                           className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
+                      ) : key === 'wasteDisposal' ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={wasteDisposalFocused ? wasteDisposalInput : (val === 0 ? "" : val.toFixed(2))}
+                          onChange={(e) => setWasteDisposalInput(e.target.value)}
+                          onFocus={() => {
+                            setWasteDisposalFocused(true);
+                            setWasteDisposalInput(val > 0 ? val.toFixed(2) : "");
+                          }}
+                          onBlur={() => {
+                            setWasteDisposalFocused(false);
+                            if (wasteDisposalInput !== null && wasteDisposalInput !== "") {
+                              handleGlobalChange('wasteDisposal', wasteDisposalInput);
+                            }
+                            setWasteDisposalInput(null);
+                          }}
+                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
                       ) : (
                         <input
                           type="number"
@@ -791,6 +819,30 @@ export default function SprayFoamEstimator() {
                                     <option key={opt} value={opt}>{opt}</option>
                                   ))}
                                 </select>
+                              ) : key === 'materialPrice' ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={materialPriceFocused[index] ? materialPriceInputs[index] : (val === 0 ? "" : val.toFixed(2))}
+                                  onChange={(e) => setMaterialPriceInputs(prev => ({ ...prev, [index]: e.target.value }))}
+                                  onFocus={() => {
+                                    setMaterialPriceFocused(prev => ({ ...prev, [index]: true }));
+                                    setMaterialPriceInputs(prev => ({ ...prev, [index]: val > 0 ? val.toFixed(2) : "" }));
+                                  }}
+                                  onBlur={() => {
+                                    setMaterialPriceFocused(prev => ({ ...prev, [index]: false }));
+                                    if (materialPriceInputs[index] !== undefined && materialPriceInputs[index] !== "") {
+                                      updateArea(index, 'materialPrice', materialPriceInputs[index]);
+                                    }
+                                    setMaterialPriceInputs(prev => {
+                                      const updated = { ...prev };
+                                      delete updated[index];
+                                      return updated;
+                                    });
+                                  }}
+                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
                               ) : (
                                 <input
                                   type={typeof val === "number" ? "number" : "text"}
