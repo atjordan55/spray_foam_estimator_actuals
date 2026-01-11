@@ -87,6 +87,7 @@ export default function SprayFoamEstimator() {
   const [pricePerSqFtErrors, setPricePerSqFtErrors] = useState({});
   const [pricePerSqFtInputs, setPricePerSqFtInputs] = useState({});
   const [laborRateInput, setLaborRateInput] = useState(null);
+  const [chargedLaborRateFocused, setChargedLaborRateFocused] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -370,6 +371,7 @@ export default function SprayFoamEstimator() {
       setPricePerSqFtErrors({});
       setPricePerSqFtInputs({});
       setLaborRateInput(null);
+      setChargedLaborRateFocused(false);
     }
   };
 
@@ -685,14 +687,16 @@ export default function SprayFoamEstimator() {
                               type="number"
                               step="0.01"
                               min="0"
-                              value={chargedLaborRateInput !== "" ? chargedLaborRateInput : (chargedLaborRate === 0 ? "" : chargedLaborRate.toFixed(2))}
+                              value={chargedLaborRateFocused ? chargedLaborRateInput : (chargedLaborRate === 0 ? "" : chargedLaborRate.toFixed(2))}
                               onChange={(e) => handleChargedLaborRateChange(e.target.value)}
                               onFocus={() => {
-                                if (chargedLaborRateInput === "" && chargedLaborRate > 0) {
-                                  setChargedLaborRateInput(chargedLaborRate.toFixed(2));
-                                }
+                                setChargedLaborRateFocused(true);
+                                setChargedLaborRateInput(chargedLaborRate > 0 ? chargedLaborRate.toFixed(2) : "");
                               }}
-                              onBlur={() => validateChargedLaborRate()}
+                              onBlur={() => {
+                                setChargedLaborRateFocused(false);
+                                validateChargedLaborRate();
+                              }}
                               disabled={globalInputs.manualLaborRate <= 0}
                               className={`w-full border p-2 rounded-lg ${chargedLaborRateError ? 'border-red-500 focus:ring-2 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'} ${globalInputs.manualLaborRate <= 0 ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
                             />
