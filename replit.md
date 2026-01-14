@@ -41,6 +41,13 @@ Preferred communication style: Simple, everyday language.
 - **Mobile Responsive**: Optimized layout for tablets and phones
 
 ### Project Areas Improvements
+- **Named Areas**: Each project area can be given a descriptive name (e.g., "Exterior Walls", "Roof Deck")
+- **Multiple Foam Applications**: Each area supports multiple foam types (e.g., 2" closed cell + 5" open cell)
+- **Shared Area Properties**: Area Sq Ft, Length, Width, Area Type, and Roof Pitch are shared across all foam applications in an area
+- **Per-Foam Properties**: Each foam application has its own Foam Type, Thickness, Material Price, Markup, and Board Feet per Set
+- **Effective Area Display**: Shows calculated effective square footage including pitch multiplier or triangular area calculation
+- **Add/Remove Foam Types**: Button to add additional foam applications to any area
+- **Per-Application Output**: Each foam application shows its own material calculations (Sq Ft, Gallons, Sets, Costs)
 - **Area (Sq Ft) Field**: Editable field to enter known square footage directly
 - **Mutual Exclusivity**: Area (Sq Ft) and Length/Width are mutually exclusive - entering one disables/clears the other
 - **Length/Width Disabled**: When Area (Sq Ft) > 0, Length and Width fields are greyed out and blank
@@ -48,6 +55,7 @@ Preferred communication style: Simple, everyday language.
 - **Apply Pitch to Manual Area**: Checkbox only visible when Area Type is Roof Deck AND Area (Sq Ft) > 0
 - **Editable $/Sq Ft**: Can directly edit price per square foot - updates Material Markup (%) and $/Per Set accordingly
 - **$/Sq Ft Validation**: Cannot be lower than minimum derived from Material Cost per Set (shows error message)
+- **Legacy Data Migration**: Automatically converts old single-foam area data to new multi-foam structure when loading
 
 ### Sales Commission Logic
 - Sales commission is now calculated based on profit margin thresholds:
