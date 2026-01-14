@@ -14,10 +14,11 @@ const Tooltip = ({ text }) => (
   </div>
 );
 
-const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost }) => (
+const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, rValue }) => (
   <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm border">
     <div className="grid grid-cols-3 gap-2">
       <div><span className="font-medium">Sq Ft:</span> {sqft.toFixed(0)}</div>
+      <div><span className="font-medium">R-Value:</span> {rValue.toFixed(1)}</div>
       <div><span className="font-medium">Gallons:</span> {gallons.toFixed(1)}</div>
       <div><span className="font-medium">Sets:</span> {sets.toFixed(2)}</div>
       <div><span className="font-medium">Base Cost:</span> ${baseMaterialCost.toFixed(2)}</div>
@@ -26,6 +27,58 @@ const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, total
     </div>
   </div>
 );
+
+const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, closedCellGallons, closedCellSets, totalBaseCost, totalMarkup, totalCost }) => (
+  <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+    <h5 className="font-semibold text-blue-800 mb-3">Area Summary</h5>
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+      <div><span className="font-medium">Sq Ft:</span> {areaSqFt.toFixed(0)}</div>
+      <div><span className="font-medium">R-Value:</span> {totalRValue.toFixed(1)}</div>
+      {(openCellGallons > 0 || openCellSets > 0) && (
+        <div><span className="font-medium">Open Cell:</span> {openCellGallons.toFixed(1)} gallons ({openCellSets.toFixed(2)} sets)</div>
+      )}
+      {(closedCellGallons > 0 || closedCellSets > 0) && (
+        <div><span className="font-medium">Closed Cell:</span> {closedCellGallons.toFixed(1)} gallons ({closedCellSets.toFixed(2)} sets)</div>
+      )}
+      <div><span className="font-medium">Base Cost:</span> ${totalBaseCost.toFixed(2)}</div>
+      <div><span className="font-medium">Markup:</span> ${totalMarkup.toFixed(2)}</div>
+      <div><span className="font-medium text-blue-800">Total:</span> <span className="font-semibold text-blue-800">${totalCost.toFixed(2)}</span></div>
+    </div>
+  </div>
+);
+
+const createFoamApplication = (foamType = "Open") => {
+  if (foamType === "Closed") {
+    return {
+      id: Date.now() + Math.random(),
+      foamType: "Closed",
+      foamThickness: 2,
+      materialPrice: 2470,
+      materialMarkup: 60.25,
+      boardFeetPerSet: 4000
+    };
+  }
+  return {
+    id: Date.now() + Math.random(),
+    foamType: "Open",
+    foamThickness: 6,
+    materialPrice: 1870,
+    materialMarkup: 75,
+    boardFeetPerSet: 14000
+  };
+};
+
+const createArea = (name = "Area 1") => ({
+  id: Date.now() + Math.random(),
+  name,
+  areaSqFt: 0,
+  length: 0,
+  width: 0,
+  areaType: "General Area",
+  roofPitch: "4/12",
+  applyPitchToManualArea: false,
+  foamApplications: [createFoamApplication("Open")]
+});
 
 const getDefaultState = () => ({
   estimateName: "",
@@ -47,19 +100,7 @@ const getDefaultState = () => ({
     wasteDisposal: 50,
     equipmentRental: 0
   },
-  sprayAreas: [{
-    areaSqFt: 0,
-    length: 0,
-    width: 0,
-    foamType: "Open",
-    foamThickness: 6,
-    materialPrice: 1870,
-    materialMarkup: 75,
-    areaType: "General Area",
-    roofPitch: "4/12",
-    boardFeetPerSet: 14000,
-    applyPitchToManualArea: false
-  }],
+  sprayAreas: [createArea("Area 1")],
   actuals: {
     actualLaborHours: null,
     actualOpenGallons: null,
@@ -170,7 +211,7 @@ export default function SprayFoamEstimator() {
     boardFeetPerSet: "Board Feet per Set"
   };
 
-  const calculateMaterialCost = (area) => {
+  const calculateEffectiveSqFt = (area) => {
     let sqft;
     
     if (area.areaSqFt > 0) {
@@ -191,17 +232,25 @@ export default function SprayFoamEstimator() {
         sqft = 0.5 * area.length * area.width;
       }
     }
+    return sqft;
+  };
 
+  const calculateFoamApplicationCost = (area, foamApp) => {
+    const sqft = calculateEffectiveSqFt(area);
     const boardFeetPerInch = sqft;
-    const totalBoardFeet = boardFeetPerInch * area.foamThickness;
-    const sets = totalBoardFeet / area.boardFeetPerSet;
+    const totalBoardFeet = boardFeetPerInch * foamApp.foamThickness;
+    const sets = totalBoardFeet / foamApp.boardFeetPerSet;
     const gallons = sets * 100;
-    const materialCost = area.materialPrice * 1.20;
+    const materialCost = foamApp.materialPrice * 1.20;
     const baseMaterialCost = sets * materialCost;
-    const markupAmount = baseMaterialCost * (area.materialMarkup / 100);
+    const markupAmount = baseMaterialCost * (foamApp.materialMarkup / 100);
     const totalCost = baseMaterialCost + markupAmount;
+    
+    // R-Value calculation: Closed Cell = 7.2 per inch, Open Cell = 3.8 per inch
+    const rValuePerInch = foamApp.foamType === "Closed" ? 7.2 : 3.8;
+    const rValue = rValuePerInch * foamApp.foamThickness;
 
-    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost };
+    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost, rValue };
   };
 
   const validateAndSet = (value, setter, key, currentState) => {
@@ -251,22 +300,8 @@ export default function SprayFoamEstimator() {
 
   const updateArea = (index, key, value) => {
     const updated = [...sprayAreas];
-    if (key === "foamType" || key === "areaType" || key === "roofPitch" || key === "applyPitchToManualArea") {
+    if (key === "name" || key === "areaType" || key === "roofPitch" || key === "applyPitchToManualArea") {
       updated[index][key] = value;
-
-      if (key === "foamType") {
-        if (value === "Open") {
-          updated[index].foamThickness = 6;
-          updated[index].materialPrice = 1870;
-          updated[index].materialMarkup = 75;
-          updated[index].boardFeetPerSet = 14000;
-        } else if (value === "Closed") {
-          updated[index].foamThickness = 2;
-          updated[index].materialPrice = 2470;
-          updated[index].materialMarkup = 60.25;
-          updated[index].boardFeetPerSet = 4000;
-        }
-      }
     } else {
       const parsed = parseFloat(value);
       const validatedValue = isNaN(parsed) ? 0 : Math.max(0, parsed);
@@ -285,49 +320,81 @@ export default function SprayFoamEstimator() {
     setSprayAreas(updated);
   };
 
+  const updateFoamApplication = (areaIndex, foamIndex, key, value) => {
+    const updated = [...sprayAreas];
+    const foamApp = updated[areaIndex].foamApplications[foamIndex];
+    
+    if (key === "foamType") {
+      foamApp.foamType = value;
+      if (value === "Open") {
+        foamApp.foamThickness = 6;
+        foamApp.materialPrice = 1870;
+        foamApp.materialMarkup = 75;
+        foamApp.boardFeetPerSet = 14000;
+      } else if (value === "Closed") {
+        foamApp.foamThickness = 2;
+        foamApp.materialPrice = 2470;
+        foamApp.materialMarkup = 60.25;
+        foamApp.boardFeetPerSet = 4000;
+      }
+    } else {
+      const parsed = parseFloat(value);
+      foamApp[key] = isNaN(parsed) ? 0 : Math.max(0, parsed);
+    }
+    setSprayAreas(updated);
+  };
+
+  const addFoamApplication = (areaIndex, foamType = "Open") => {
+    const updated = [...sprayAreas];
+    updated[areaIndex].foamApplications.push(createFoamApplication(foamType));
+    setSprayAreas(updated);
+  };
+
+  const removeFoamApplication = (areaIndex, foamIndex) => {
+    const updated = [...sprayAreas];
+    if (updated[areaIndex].foamApplications.length > 1) {
+      updated[areaIndex].foamApplications = updated[areaIndex].foamApplications.filter((_, i) => i !== foamIndex);
+      setSprayAreas(updated);
+    }
+  };
+
   const addArea = () => {
-    setSprayAreas([...sprayAreas, {
-      areaSqFt: 0,
-      length: 0,
-      width: 0,
-      foamType: "Open",
-      foamThickness: 6,
-      materialPrice: 1870,
-      materialMarkup: 75,
-      areaType: "General Area",
-      roofPitch: "4/12",
-      boardFeetPerSet: 14000,
-      applyPitchToManualArea: false
-    }]);
+    const areaNumber = sprayAreas.length + 1;
+    setSprayAreas([...sprayAreas, createArea(`Area ${areaNumber}`)]);
   };
 
   const removeArea = (index) => {
     setSprayAreas(sprayAreas.filter((_, i) => i !== index));
     setPricePerSqFtErrors(prev => {
       const updated = { ...prev };
-      delete updated[index];
+      Object.keys(updated).forEach(key => {
+        if (key.startsWith(`${index}-`)) {
+          delete updated[key];
+        }
+      });
       return updated;
     });
   };
 
-  const handlePricePerSqFtInputChange = (index, value) => {
-    setPricePerSqFtInputs(prev => ({ ...prev, [index]: value }));
+  const handlePricePerSqFtInputChange = (key, value) => {
+    setPricePerSqFtInputs(prev => ({ ...prev, [key]: value }));
   };
 
-  const handlePricePerSqFtBlur = (index, area) => {
-    const value = pricePerSqFtInputs[index];
+  const handlePricePerSqFtBlur = (areaIndex, foamIndex, foamApp) => {
+    const key = `${areaIndex}-${foamIndex}`;
+    const value = pricePerSqFtInputs[key];
     if (value === undefined || value === "") {
       setPricePerSqFtInputs(prev => {
         const updated = { ...prev };
-        delete updated[index];
+        delete updated[key];
         return updated;
       });
       return;
     }
     
     const newPricePerSqFt = parseFloat(value) || 0;
-    const materialCostPerSet = area.materialPrice * 1.20;
-    const minPricePerSqFt = (area.foamThickness / area.boardFeetPerSet) * materialCostPerSet;
+    const materialCostPerSet = foamApp.materialPrice * 1.20;
+    const minPricePerSqFt = (foamApp.foamThickness / foamApp.boardFeetPerSet) * materialCostPerSet;
     
     const roundedInput = Math.round(newPricePerSqFt * 100) / 100;
     const roundedMin = Math.round(minPricePerSqFt * 100) / 100;
@@ -335,26 +402,26 @@ export default function SprayFoamEstimator() {
     if (roundedInput < roundedMin) {
       setPricePerSqFtErrors(prev => ({
         ...prev,
-        [index]: `Price must be at least $${minPricePerSqFt.toFixed(2)} (derived from Material Cost per Set)`
+        [key]: `Price must be at least $${minPricePerSqFt.toFixed(2)} (derived from Material Cost per Set)`
       }));
     } else {
       setPricePerSqFtErrors(prev => {
         const updated = { ...prev };
-        delete updated[index];
+        delete updated[key];
         return updated;
       });
       
-      const pricePerSet = newPricePerSqFt * (area.boardFeetPerSet / area.foamThickness);
+      const pricePerSet = newPricePerSqFt * (foamApp.boardFeetPerSet / foamApp.foamThickness);
       const newMarkup = ((pricePerSet / materialCostPerSet) - 1) * 100;
       
       const updated = [...sprayAreas];
-      updated[index].materialMarkup = Math.max(0, newMarkup);
+      updated[areaIndex].foamApplications[foamIndex].materialMarkup = Math.max(0, newMarkup);
       setSprayAreas(updated);
     }
     
     setPricePerSqFtInputs(prev => {
       const updated = { ...prev };
-      delete updated[index];
+      delete updated[key];
       return updated;
     });
   };
@@ -431,6 +498,35 @@ export default function SprayFoamEstimator() {
     e.target.value = '';
   };
 
+  const migrateSprayAreas = (areas) => {
+    if (!areas || areas.length === 0) return getDefaultState().sprayAreas;
+    
+    return areas.map((area, index) => {
+      if (area.foamApplications) {
+        return area;
+      }
+      
+      return {
+        id: area.id || Date.now() + Math.random() + index,
+        name: area.name || `Area ${index + 1}`,
+        areaSqFt: area.areaSqFt || 0,
+        length: area.length || 0,
+        width: area.width || 0,
+        areaType: area.areaType || "General Area",
+        roofPitch: area.roofPitch || "4/12",
+        applyPitchToManualArea: area.applyPitchToManualArea || false,
+        foamApplications: [{
+          id: Date.now() + Math.random(),
+          foamType: area.foamType || "Open",
+          foamThickness: area.foamThickness || 6,
+          materialPrice: area.materialPrice || 1870,
+          materialMarkup: area.materialMarkup || 75,
+          boardFeetPerSet: area.boardFeetPerSet || 14000
+        }]
+      };
+    });
+  };
+
   const applyEstimateData = (data) => {
     setEstimateName(data.estimateName || "");
     setCustomerInfo(data.customerInfo || getDefaultState().customerInfo);
@@ -438,7 +534,7 @@ export default function SprayFoamEstimator() {
     setExpirationDate(data.expirationDate || getDefaultState().expirationDate);
     setProjectNotes(data.projectNotes || "");
     setGlobalInputs(data.globalInputs || getDefaultState().globalInputs);
-    setSprayAreas(data.sprayAreas || getDefaultState().sprayAreas);
+    setSprayAreas(migrateSprayAreas(data.sprayAreas));
     setActuals({
       actualLaborHours: data.actuals?.actualLaborHours ?? null,
       actualOpenGallons: data.actuals?.actualOpenGallons ?? null,
@@ -470,16 +566,18 @@ export default function SprayFoamEstimator() {
   let materialMarkupAmount = 0;
 
   sprayAreas.forEach(area => {
-    const { gallons, sets, baseMaterialCost: cost, markupAmount } = calculateMaterialCost(area);
-    if (area.foamType === "Open") {
-      totalGallons.open += gallons;
-      totalSets.open += sets;
-    } else {
-      totalGallons.closed += gallons;
-      totalSets.closed += sets;
-    }
-    baseMaterialCost += cost;
-    materialMarkupAmount += markupAmount;
+    area.foamApplications.forEach(foamApp => {
+      const { gallons, sets, baseMaterialCost: cost, markupAmount } = calculateFoamApplicationCost(area, foamApp);
+      if (foamApp.foamType === "Open") {
+        totalGallons.open += gallons;
+        totalSets.open += sets;
+      } else {
+        totalGallons.closed += gallons;
+        totalSets.closed += sets;
+      }
+      baseMaterialCost += cost;
+      materialMarkupAmount += markupAmount;
+    });
   });
 
   const fuelCost = globalInputs.travelDistance * globalInputs.travelRate;
@@ -788,152 +886,344 @@ export default function SprayFoamEstimator() {
                 </button>
               </div>
               <div className="space-y-6">
-                {sprayAreas.map((area, index) => {
-                  const { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost } = calculateMaterialCost(area);
+                {sprayAreas.map((area, areaIndex) => {
+                  const effectiveSqFt = calculateEffectiveSqFt(area);
                   return (
-                    <div key={index} className="border border-gray-200 p-4 rounded-lg">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-medium text-gray-900">Area {index + 1}</h3>
+                    <div key={area.id || areaIndex} className="border border-gray-200 p-4 rounded-lg">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                        <input
+                          type="text"
+                          value={area.name}
+                          onChange={(e) => updateArea(areaIndex, 'name', e.target.value)}
+                          placeholder="Enter area name..."
+                          className="text-lg font-medium text-gray-900 border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full sm:w-auto sm:min-w-64"
+                        />
                         {sprayAreas.length > 1 && (
-                          <button onClick={() => removeArea(index)} className="text-red-500 hover:text-red-700 text-sm font-medium no-print">
-                            Remove
+                          <button onClick={() => removeArea(areaIndex)} className="text-red-500 hover:text-red-700 text-sm font-medium no-print">
+                            Remove Area
                           </button>
                         )}
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {Object.entries(area).map(([key, val]) => {
-                          if (key === "roofPitch" && area.areaType !== "Roof Deck") return null;
-                          if (key === "applyPitchToManualArea") return null;
-                          
-                          const isLengthOrWidth = key === "length" || key === "width";
-                          const isDisabledByAreaSqFt = isLengthOrWidth && area.areaSqFt > 0;
-                          
-                          return (
-                            <div key={key}>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                {labelMap[key] || key}
-                                <Tooltip text={tooltips[key]} />
-                              </label>
-                              {key === "foamType" || key === "areaType" ? (
-                                <select
-                                  value={val}
-                                  onChange={(e) => updateArea(index, key, e.target.value)}
-                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                >
-                                  {(key === "foamType" ? ["Open", "Closed"] : ["General Area", "Roof Deck", "Gable"]).map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
-                              ) : key === "roofPitch" ? (
-                                <select
-                                  value={val}
-                                  onChange={(e) => updateArea(index, key, e.target.value)}
-                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                >
-                                  {pitchOptions.map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
-                              ) : key === 'materialPrice' ? (
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={materialPriceFocused[index] ? materialPriceInputs[index] : (val === 0 ? "" : val.toFixed(2))}
-                                  onChange={(e) => setMaterialPriceInputs(prev => ({ ...prev, [index]: e.target.value }))}
-                                  onFocus={() => {
-                                    setMaterialPriceFocused(prev => ({ ...prev, [index]: true }));
-                                    setMaterialPriceInputs(prev => ({ ...prev, [index]: val > 0 ? val.toFixed(2) : "" }));
-                                  }}
-                                  onBlur={() => {
-                                    setMaterialPriceFocused(prev => ({ ...prev, [index]: false }));
-                                    if (materialPriceInputs[index] !== undefined && materialPriceInputs[index] !== "") {
-                                      updateArea(index, 'materialPrice', materialPriceInputs[index]);
-                                    }
-                                    setMaterialPriceInputs(prev => {
-                                      const updated = { ...prev };
-                                      delete updated[index];
-                                      return updated;
-                                    });
-                                  }}
-                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                />
-                              ) : (
-                                <input
-                                  type={typeof val === "number" ? "number" : "text"}
-                                  step="0.01"
-                                  min="0"
-                                  value={isDisabledByAreaSqFt ? "" : (val === 0 ? "" : val)}
-                                  onChange={(e) => updateArea(index, key, e.target.value)}
-                                  disabled={isDisabledByAreaSqFt}
-                                  className={`w-full border border-gray-300 p-2 rounded-lg ${isDisabledByAreaSqFt ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Material Cost per Set</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={(area.materialPrice * 1.20).toFixed(2)}
-                            readOnly
-                            className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">$/Per Set</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={(area.materialPrice * 1.20 * (1 + area.materialMarkup / 100)).toFixed(2)}
-                            readOnly
-                            className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
-                          />
-                        </div>
+                      
+                      {/* Shared Area Properties */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            $/Sq Ft
-                            <Tooltip text="Price charged per square foot. Editing this will adjust Material Markup (%)." />
+                            Area (Sq Ft)
+                            <Tooltip text={tooltips.areaSqFt} />
                           </label>
                           <input
                             type="number"
                             step="0.01"
                             min="0"
-                            value={pricePerSqFtInputs[index] !== undefined ? pricePerSqFtInputs[index] : (sqft > 0 ? (totalCost / sqft).toFixed(2) : "")}
-                            onChange={(e) => handlePricePerSqFtInputChange(index, e.target.value)}
-                            onBlur={() => handlePricePerSqFtBlur(index, area)}
-                            className={`w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${pricePerSqFtErrors[index] ? 'border-red-500' : 'border-gray-300'}`}
+                            value={area.areaSqFt === 0 ? "" : area.areaSqFt}
+                            onChange={(e) => updateArea(areaIndex, 'areaSqFt', e.target.value)}
+                            className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
-                          {pricePerSqFtErrors[index] && (
-                            <p className="text-red-600 text-sm mt-1">{pricePerSqFtErrors[index]}</p>
-                          )}
                         </div>
-                        {area.areaType === "Roof Deck" && area.areaSqFt > 0 && (
-                          <div className="flex items-center col-span-full mt-2">
-                            <input
-                              type="checkbox"
-                              id={`applyPitch-${index}`}
-                              checked={area.applyPitchToManualArea || false}
-                              onChange={(e) => updateArea(index, 'applyPitchToManualArea', e.target.checked)}
-                              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                            />
-                            <label htmlFor={`applyPitch-${index}`} className="ml-2 text-sm font-medium text-gray-700">
-                              Apply pitch multiplier to entered Area (Sq Ft)
-                              <Tooltip text={tooltips.applyPitchToManualArea} />
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Length (ft)
+                            <Tooltip text={tooltips.length} />
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={area.areaSqFt > 0 ? "" : (area.length === 0 ? "" : area.length)}
+                            onChange={(e) => updateArea(areaIndex, 'length', e.target.value)}
+                            disabled={area.areaSqFt > 0}
+                            className={`w-full border border-gray-300 p-2 rounded-lg ${area.areaSqFt > 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Width (ft)
+                            <Tooltip text={tooltips.width} />
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={area.areaSqFt > 0 ? "" : (area.width === 0 ? "" : area.width)}
+                            onChange={(e) => updateArea(areaIndex, 'width', e.target.value)}
+                            disabled={area.areaSqFt > 0}
+                            className={`w-full border border-gray-300 p-2 rounded-lg ${area.areaSqFt > 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Area Type
+                            <Tooltip text={tooltips.areaType} />
+                          </label>
+                          <select
+                            value={area.areaType}
+                            onChange={(e) => updateArea(areaIndex, 'areaType', e.target.value)}
+                            className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            {["General Area", "Roof Deck", "Gable"].map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {area.areaType === "Roof Deck" && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Roof Pitch
+                              <Tooltip text={tooltips.roofPitch} />
                             </label>
+                            <select
+                              value={area.roofPitch}
+                              onChange={(e) => updateArea(areaIndex, 'roofPitch', e.target.value)}
+                              className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              {pitchOptions.map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
                           </div>
                         )}
                       </div>
-                      <MiniOutput
-                        sqft={sqft}
-                        gallons={gallons}
-                        sets={sets}
-                        baseMaterialCost={baseMaterialCost}
-                        markupAmount={markupAmount}
-                        totalCost={totalCost}
-                      />
+                      
+                      {area.areaType === "Roof Deck" && area.areaSqFt > 0 && (
+                        <div className="flex items-center mb-4">
+                          <input
+                            type="checkbox"
+                            id={`applyPitch-${areaIndex}`}
+                            checked={area.applyPitchToManualArea || false}
+                            onChange={(e) => updateArea(areaIndex, 'applyPitchToManualArea', e.target.checked)}
+                            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <label htmlFor={`applyPitch-${areaIndex}`} className="ml-2 text-sm font-medium text-gray-700">
+                            Apply pitch multiplier to entered Area (Sq Ft)
+                            <Tooltip text={tooltips.applyPitchToManualArea} />
+                          </label>
+                        </div>
+                      )}
+                      
+                      {effectiveSqFt > 0 && (
+                        <div className="text-sm text-gray-600 mb-4">
+                          Effective Area: <span className="font-medium">{effectiveSqFt.toFixed(0)} sq ft</span>
+                          {area.areaType === "Roof Deck" && (area.applyPitchToManualArea || area.length > 0 || area.width > 0) && " (with pitch multiplier)"}
+                          {area.areaType === "Gable" && " (triangular area)"}
+                        </div>
+                      )}
+                      
+                      {/* Foam Applications */}
+                      <div className="border-t border-gray-200 pt-4 mt-4">
+                        <div className="flex justify-between items-center mb-3">
+                          <h4 className="font-medium text-gray-800">Foam Applications</h4>
+                          <button 
+                            onClick={() => addFoamApplication(areaIndex)}
+                            className="text-blue-600 hover:text-blue-700 text-sm font-medium no-print"
+                          >
+                            + Add Foam Type
+                          </button>
+                        </div>
+                        
+                        <div className="space-y-4">
+                          {area.foamApplications.map((foamApp, foamIndex) => {
+                            const foamCalcs = calculateFoamApplicationCost(area, foamApp);
+                            const foamKey = `${areaIndex}-${foamIndex}`;
+                            return (
+                              <div key={foamApp.id || foamIndex} className="bg-gray-50 p-4 rounded-lg">
+                                <div className="flex justify-between items-center mb-3">
+                                  <span className="text-sm font-medium text-gray-700">
+                                    {foamApp.foamType} Cell - {foamApp.foamThickness}" thick
+                                  </span>
+                                  {area.foamApplications.length > 1 && (
+                                    <button 
+                                      onClick={() => removeFoamApplication(areaIndex, foamIndex)}
+                                      className="text-red-500 hover:text-red-700 text-xs font-medium no-print"
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
+                                </div>
+                                
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Foam Type
+                                      <Tooltip text={tooltips.foamType} />
+                                    </label>
+                                    <select
+                                      value={foamApp.foamType}
+                                      onChange={(e) => updateFoamApplication(areaIndex, foamIndex, 'foamType', e.target.value)}
+                                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                      <option value="Open">Open</option>
+                                      <option value="Closed">Closed</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Foam Thickness (inches)
+                                      <Tooltip text={tooltips.foamThickness} />
+                                    </label>
+                                    <input
+                                      type="number"
+                                      step="0.5"
+                                      min="0"
+                                      value={foamApp.foamThickness === 0 ? "" : foamApp.foamThickness}
+                                      onChange={(e) => updateFoamApplication(areaIndex, foamIndex, 'foamThickness', e.target.value)}
+                                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Foam Cost per Set
+                                      <Tooltip text={tooltips.materialPrice} />
+                                    </label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={materialPriceFocused[foamKey] ? materialPriceInputs[foamKey] : (foamApp.materialPrice === 0 ? "" : foamApp.materialPrice.toFixed(2))}
+                                      onChange={(e) => setMaterialPriceInputs(prev => ({ ...prev, [foamKey]: e.target.value }))}
+                                      onFocus={() => {
+                                        setMaterialPriceFocused(prev => ({ ...prev, [foamKey]: true }));
+                                        setMaterialPriceInputs(prev => ({ ...prev, [foamKey]: foamApp.materialPrice > 0 ? foamApp.materialPrice.toFixed(2) : "" }));
+                                      }}
+                                      onBlur={() => {
+                                        setMaterialPriceFocused(prev => ({ ...prev, [foamKey]: false }));
+                                        if (materialPriceInputs[foamKey] !== undefined && materialPriceInputs[foamKey] !== "") {
+                                          updateFoamApplication(areaIndex, foamIndex, 'materialPrice', materialPriceInputs[foamKey]);
+                                        }
+                                        setMaterialPriceInputs(prev => {
+                                          const updated = { ...prev };
+                                          delete updated[foamKey];
+                                          return updated;
+                                        });
+                                      }}
+                                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Material Markup (%)
+                                      <Tooltip text={tooltips.materialMarkup} />
+                                    </label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={foamApp.materialMarkup === 0 ? "" : foamApp.materialMarkup}
+                                      onChange={(e) => updateFoamApplication(areaIndex, foamIndex, 'materialMarkup', e.target.value)}
+                                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Board Feet per Set
+                                      <Tooltip text={tooltips.boardFeetPerSet} />
+                                    </label>
+                                    <input
+                                      type="number"
+                                      step="1"
+                                      min="0"
+                                      value={foamApp.boardFeetPerSet === 0 ? "" : foamApp.boardFeetPerSet}
+                                      onChange={(e) => updateFoamApplication(areaIndex, foamIndex, 'boardFeetPerSet', e.target.value)}
+                                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Material Cost per Set</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={(foamApp.materialPrice * 1.20).toFixed(2)}
+                                      readOnly
+                                      className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">$/Per Set</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={(foamApp.materialPrice * 1.20 * (1 + foamApp.materialMarkup / 100)).toFixed(2)}
+                                      readOnly
+                                      className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      $/Sq Ft
+                                      <Tooltip text="Price charged per square foot. Editing this will adjust Material Markup (%)." />
+                                    </label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={pricePerSqFtInputs[foamKey] !== undefined ? pricePerSqFtInputs[foamKey] : (foamCalcs.sqft > 0 ? (foamCalcs.totalCost / foamCalcs.sqft).toFixed(2) : "")}
+                                      onChange={(e) => handlePricePerSqFtInputChange(foamKey, e.target.value)}
+                                      onBlur={() => handlePricePerSqFtBlur(areaIndex, foamIndex, foamApp)}
+                                      className={`w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${pricePerSqFtErrors[foamKey] ? 'border-red-500' : 'border-gray-300'}`}
+                                    />
+                                    {pricePerSqFtErrors[foamKey] && (
+                                      <p className="text-red-600 text-xs mt-1">{pricePerSqFtErrors[foamKey]}</p>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                <MiniOutput
+                                  sqft={foamCalcs.sqft}
+                                  gallons={foamCalcs.gallons}
+                                  sets={foamCalcs.sets}
+                                  baseMaterialCost={foamCalcs.baseMaterialCost}
+                                  markupAmount={foamCalcs.markupAmount}
+                                  totalCost={foamCalcs.totalCost}
+                                  rValue={foamCalcs.rValue}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        
+                        {/* Area Summary - show when multiple foam applications */}
+                        {area.foamApplications.length > 1 && (() => {
+                          const areaEffectiveSqFt = calculateEffectiveSqFt(area);
+                          let totalRValue = 0;
+                          let openCellGallons = 0;
+                          let openCellSets = 0;
+                          let closedCellGallons = 0;
+                          let closedCellSets = 0;
+                          let totalBaseCost = 0;
+                          let totalMarkup = 0;
+                          let totalCost = 0;
+                          
+                          area.foamApplications.forEach(foamApp => {
+                            const foamCalcs = calculateFoamApplicationCost(area, foamApp);
+                            totalRValue += foamCalcs.rValue;
+                            totalBaseCost += foamCalcs.baseMaterialCost;
+                            totalMarkup += foamCalcs.markupAmount;
+                            totalCost += foamCalcs.totalCost;
+                            
+                            if (foamApp.foamType === "Open") {
+                              openCellGallons += foamCalcs.gallons;
+                              openCellSets += foamCalcs.sets;
+                            } else {
+                              closedCellGallons += foamCalcs.gallons;
+                              closedCellSets += foamCalcs.sets;
+                            }
+                          });
+                          
+                          return (
+                            <AreaSummary
+                              areaSqFt={areaEffectiveSqFt}
+                              totalRValue={totalRValue}
+                              openCellGallons={openCellGallons}
+                              openCellSets={openCellSets}
+                              closedCellGallons={closedCellGallons}
+                              closedCellSets={closedCellSets}
+                              totalBaseCost={totalBaseCost}
+                              totalMarkup={totalMarkup}
+                              totalCost={totalCost}
+                            />
+                          );
+                        })()}
+                      </div>
                     </div>
                   );
                 })}
