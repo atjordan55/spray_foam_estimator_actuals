@@ -14,15 +14,35 @@ const Tooltip = ({ text }) => (
   </div>
 );
 
-const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost }) => (
+const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, rValue }) => (
   <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm border">
     <div className="grid grid-cols-3 gap-2">
       <div><span className="font-medium">Sq Ft:</span> {sqft.toFixed(0)}</div>
+      <div><span className="font-medium">R-Value:</span> {rValue.toFixed(1)}</div>
       <div><span className="font-medium">Gallons:</span> {gallons.toFixed(1)}</div>
       <div><span className="font-medium">Sets:</span> {sets.toFixed(2)}</div>
       <div><span className="font-medium">Base Cost:</span> ${baseMaterialCost.toFixed(2)}</div>
       <div><span className="font-medium">Markup:</span> ${markupAmount.toFixed(2)}</div>
       <div><span className="font-medium">Total:</span> ${totalCost.toFixed(2)}</div>
+    </div>
+  </div>
+);
+
+const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, closedCellGallons, closedCellSets, totalBaseCost, totalMarkup, totalCost }) => (
+  <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+    <h5 className="font-semibold text-blue-800 mb-3">Area Summary</h5>
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+      <div><span className="font-medium">Sq Ft:</span> {areaSqFt.toFixed(0)}</div>
+      <div><span className="font-medium">R-Value:</span> {totalRValue.toFixed(1)}</div>
+      {(openCellGallons > 0 || openCellSets > 0) && (
+        <div><span className="font-medium">Open Cell:</span> {openCellGallons.toFixed(1)} gallons ({openCellSets.toFixed(2)} sets)</div>
+      )}
+      {(closedCellGallons > 0 || closedCellSets > 0) && (
+        <div><span className="font-medium">Closed Cell:</span> {closedCellGallons.toFixed(1)} gallons ({closedCellSets.toFixed(2)} sets)</div>
+      )}
+      <div><span className="font-medium">Base Cost:</span> ${totalBaseCost.toFixed(2)}</div>
+      <div><span className="font-medium">Markup:</span> ${totalMarkup.toFixed(2)}</div>
+      <div><span className="font-medium text-blue-800">Total:</span> <span className="font-semibold text-blue-800">${totalCost.toFixed(2)}</span></div>
     </div>
   </div>
 );
@@ -225,8 +245,12 @@ export default function SprayFoamEstimator() {
     const baseMaterialCost = sets * materialCost;
     const markupAmount = baseMaterialCost * (foamApp.materialMarkup / 100);
     const totalCost = baseMaterialCost + markupAmount;
+    
+    // R-Value calculation: Closed Cell = 7.2 per inch, Open Cell = 3.8 per inch
+    const rValuePerInch = foamApp.foamType === "Closed" ? 7.2 : 3.8;
+    const rValue = rValuePerInch * foamApp.foamThickness;
 
-    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost };
+    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost, rValue };
   };
 
   const validateAndSet = (value, setter, key, currentState) => {
@@ -1150,11 +1174,55 @@ export default function SprayFoamEstimator() {
                                   baseMaterialCost={foamCalcs.baseMaterialCost}
                                   markupAmount={foamCalcs.markupAmount}
                                   totalCost={foamCalcs.totalCost}
+                                  rValue={foamCalcs.rValue}
                                 />
                               </div>
                             );
                           })}
                         </div>
+                        
+                        {/* Area Summary - show when multiple foam applications */}
+                        {area.foamApplications.length > 1 && (() => {
+                          const areaEffectiveSqFt = calculateEffectiveSqFt(area);
+                          let totalRValue = 0;
+                          let openCellGallons = 0;
+                          let openCellSets = 0;
+                          let closedCellGallons = 0;
+                          let closedCellSets = 0;
+                          let totalBaseCost = 0;
+                          let totalMarkup = 0;
+                          let totalCost = 0;
+                          
+                          area.foamApplications.forEach(foamApp => {
+                            const foamCalcs = calculateFoamApplicationCost(area, foamApp);
+                            totalRValue += foamCalcs.rValue;
+                            totalBaseCost += foamCalcs.baseMaterialCost;
+                            totalMarkup += foamCalcs.markupAmount;
+                            totalCost += foamCalcs.totalCost;
+                            
+                            if (foamApp.foamType === "Open") {
+                              openCellGallons += foamCalcs.gallons;
+                              openCellSets += foamCalcs.sets;
+                            } else {
+                              closedCellGallons += foamCalcs.gallons;
+                              closedCellSets += foamCalcs.sets;
+                            }
+                          });
+                          
+                          return (
+                            <AreaSummary
+                              areaSqFt={areaEffectiveSqFt}
+                              totalRValue={totalRValue}
+                              openCellGallons={openCellGallons}
+                              openCellSets={openCellSets}
+                              closedCellGallons={closedCellGallons}
+                              closedCellSets={closedCellSets}
+                              totalBaseCost={totalBaseCost}
+                              totalMarkup={totalMarkup}
+                              totalCost={totalCost}
+                            />
+                          );
+                        })()}
                       </div>
                     </div>
                   );

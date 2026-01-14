@@ -45,9 +45,11 @@ Preferred communication style: Simple, everyday language.
 - **Multiple Foam Applications**: Each area supports multiple foam types (e.g., 2" closed cell + 5" open cell)
 - **Shared Area Properties**: Area Sq Ft, Length, Width, Area Type, and Roof Pitch are shared across all foam applications in an area
 - **Per-Foam Properties**: Each foam application has its own Foam Type, Thickness, Material Price, Markup, and Board Feet per Set
+- **R-Value Calculations**: Automatically calculated based on foam type and thickness (Closed Cell: 7.2/inch, Open Cell: 3.8/inch)
 - **Effective Area Display**: Shows calculated effective square footage including pitch multiplier or triangular area calculation
 - **Add/Remove Foam Types**: Button to add additional foam applications to any area
-- **Per-Application Output**: Each foam application shows its own material calculations (Sq Ft, Gallons, Sets, Costs)
+- **Per-Application Output**: Each foam application shows its own material calculations (Sq Ft, R-Value, Gallons, Sets, Costs)
+- **Area Summary**: When multiple foam types exist in an area, displays combined totals (Sq Ft, Total R-Value, Open/Closed Cell gallons and sets, Base Cost, Markup, Total)
 - **Area (Sq Ft) Field**: Editable field to enter known square footage directly
 - **Mutual Exclusivity**: Area (Sq Ft) and Length/Width are mutually exclusive - entering one disables/clears the other
 - **Length/Width Disabled**: When Area (Sq Ft) > 0, Length and Width fields are greyed out and blank
