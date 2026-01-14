@@ -474,6 +474,35 @@ export default function SprayFoamEstimator() {
     e.target.value = '';
   };
 
+  const migrateSprayAreas = (areas) => {
+    if (!areas || areas.length === 0) return getDefaultState().sprayAreas;
+    
+    return areas.map((area, index) => {
+      if (area.foamApplications) {
+        return area;
+      }
+      
+      return {
+        id: area.id || Date.now() + Math.random() + index,
+        name: area.name || `Area ${index + 1}`,
+        areaSqFt: area.areaSqFt || 0,
+        length: area.length || 0,
+        width: area.width || 0,
+        areaType: area.areaType || "General Area",
+        roofPitch: area.roofPitch || "4/12",
+        applyPitchToManualArea: area.applyPitchToManualArea || false,
+        foamApplications: [{
+          id: Date.now() + Math.random(),
+          foamType: area.foamType || "Open",
+          foamThickness: area.foamThickness || 6,
+          materialPrice: area.materialPrice || 1870,
+          materialMarkup: area.materialMarkup || 75,
+          boardFeetPerSet: area.boardFeetPerSet || 14000
+        }]
+      };
+    });
+  };
+
   const applyEstimateData = (data) => {
     setEstimateName(data.estimateName || "");
     setCustomerInfo(data.customerInfo || getDefaultState().customerInfo);
@@ -481,7 +510,7 @@ export default function SprayFoamEstimator() {
     setExpirationDate(data.expirationDate || getDefaultState().expirationDate);
     setProjectNotes(data.projectNotes || "");
     setGlobalInputs(data.globalInputs || getDefaultState().globalInputs);
-    setSprayAreas(data.sprayAreas || getDefaultState().sprayAreas);
+    setSprayAreas(migrateSprayAreas(data.sprayAreas));
     setActuals({
       actualLaborHours: data.actuals?.actualLaborHours ?? null,
       actualOpenGallons: data.actuals?.actualOpenGallons ?? null,
