@@ -443,8 +443,15 @@ app.post('/api/jobber/create-quote', async (req, res) => {
       throw new Error('Property ID is required to create a quote');
     }
     
+    const formattedLineItems = lineItems.map(item => ({
+      name: item.name,
+      description: item.description || '',
+      quantity: item.quantity || 1,
+      unitPrice: String(item.unitPrice.toFixed(2)),
+    }));
+    
     const createMutation = `
-      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [QuoteLineItemCreateInput!]!) {
+      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [LineItemCreateInput!]!) {
         quoteCreate(attributes: {
           clientId: $clientId
           propertyId: $propertyId
@@ -468,13 +475,10 @@ app.post('/api/jobber/create-quote', async (req, res) => {
       clientId,
       propertyId,
       title: title || 'Spray Foam Estimate',
-      lineItems: lineItems.map(item => ({
-        name: item.name,
-        description: item.description || '',
-        quantity: item.quantity || 1,
-        unitPrice: String(item.unitPrice),
-      })),
+      lineItems: formattedLineItems,
     };
+    
+    console.log('Creating quote with variables:', JSON.stringify(variables, null, 2));
     
     const result = await jobberGraphQL(createMutation, variables);
     
