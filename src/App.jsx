@@ -832,13 +832,22 @@ export default function SprayFoamEstimator() {
                   <input type="file" accept="application/json" onChange={loadEstimate} className="hidden" />
                 </label>
                 {jobberConnected ? (
-                  <button 
-                    onClick={sendToJobber} 
-                    disabled={jobberLoading}
-                    className="bg-orange-500 hover:bg-orange-600 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-medium transition-colors text-sm md:text-base disabled:opacity-50"
-                  >
-                    {jobberLoading ? 'Sending...' : 'Send to Jobber'}
-                  </button>
+                  <>
+                    <button 
+                      onClick={sendToJobber} 
+                      disabled={jobberLoading}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-medium transition-colors text-sm md:text-base disabled:opacity-50"
+                    >
+                      {jobberLoading ? 'Sending...' : 'Send to Jobber'}
+                    </button>
+                    <button 
+                      onClick={disconnectFromJobber}
+                      disabled={jobberLoading}
+                      className="bg-red-500 hover:bg-red-600 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-medium transition-colors text-sm md:text-base disabled:opacity-50"
+                    >
+                      Disconnect
+                    </button>
+                  </>
                 ) : (
                   <button 
                     onClick={connectToJobber}
