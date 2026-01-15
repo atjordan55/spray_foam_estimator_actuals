@@ -633,7 +633,7 @@ export default function SprayFoamEstimator() {
       const { client, propertyId } = await clientResponse.json();
       
       if (!propertyId) {
-        throw new Error('Client does not have a default property. Please add a property to the client in Jobber first.');
+        throw new Error('Could not find or create a property for this client. Please ensure an address is provided or add a property in Jobber.');
       }
       
       const lineItems = [];

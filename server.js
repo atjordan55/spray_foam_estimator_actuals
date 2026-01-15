@@ -345,17 +345,19 @@ async function getClientProperty(clientId) {
     const propertiesQuery = `
       query GetClientProperties($clientId: EncodedId!) {
         client(id: $clientId) {
-          properties(first: 1) {
-            nodes {
-              id
-            }
+          properties {
+            id
           }
         }
       }
     `;
     
     const result = await jobberGraphQL(propertiesQuery, { clientId });
-    return result.client?.properties?.nodes?.[0]?.id || null;
+    const properties = result.client?.properties;
+    if (Array.isArray(properties) && properties.length > 0) {
+      return properties[0].id;
+    }
+    return null;
   } catch (err) {
     console.error('Get client property error:', err.message);
     return null;
@@ -365,14 +367,9 @@ async function getClientProperty(clientId) {
 async function createPropertyForClient(clientId, address) {
   try {
     const createPropertyMutation = `
-      mutation CreateProperty($clientId: EncodedId!, $street1: String!) {
-        propertyCreate(attributes: {
-          clientId: $clientId
-          address: {
-            street1: $street1
-          }
-        }) {
-          property {
+      mutation CreateProperty($clientId: EncodedId!, $input: PropertyCreateInput!) {
+        propertyCreate(clientId: $clientId, input: $input) {
+          properties {
             id
           }
           userErrors {
@@ -385,7 +382,11 @@ async function createPropertyForClient(clientId, address) {
     
     const result = await jobberGraphQL(createPropertyMutation, {
       clientId,
-      street1: address,
+      input: {
+        address: {
+          street1: address,
+        }
+      },
     });
     
     if (result.propertyCreate.userErrors?.length > 0) {
@@ -393,7 +394,11 @@ async function createPropertyForClient(clientId, address) {
       return null;
     }
     
-    return result.propertyCreate.property?.id;
+    const properties = result.propertyCreate?.properties;
+    if (Array.isArray(properties) && properties.length > 0) {
+      return properties[0].id;
+    }
+    return null;
   } catch (err) {
     console.error('Create property error:', err.message);
     return null;
