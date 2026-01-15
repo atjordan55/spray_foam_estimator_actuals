@@ -420,6 +420,14 @@ app.get('/api/jobber/introspect-quote', async (req, res) => {
               ofType {
                 name
                 kind
+                ofType {
+                  name
+                  kind
+                  ofType {
+                    name
+                    kind
+                  }
+                }
               }
             }
           }
@@ -451,7 +459,7 @@ app.post('/api/jobber/create-quote', async (req, res) => {
     }));
     
     const createMutation = `
-      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [LineItemCreateInput!]!) {
+      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [QuoteCreateLineItemAttributes!]!) {
         quoteCreate(attributes: {
           clientId: $clientId
           propertyId: $propertyId
