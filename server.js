@@ -201,7 +201,7 @@ async function jobberGraphQL(query, variables = {}) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${tokens.access_token}`,
-      'X-JOBBER-GRAPHQL-VERSION': '2023-11-15',
+      'X-JOBBER-GRAPHQL-VERSION': '2025-04-16',
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -251,6 +251,9 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
               firstName
               lastName
               companyName
+              defaultProperty {
+                id
+              }
             }
           }
         }
@@ -259,7 +262,12 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
       const searchResult = await jobberGraphQL(searchQuery, { searchTerm: email });
       
       if (searchResult.clients.nodes.length > 0) {
-        return res.json({ client: searchResult.clients.nodes[0], created: false });
+        const client = searchResult.clients.nodes[0];
+        return res.json({ 
+          client, 
+          propertyId: client.defaultProperty?.id,
+          created: false 
+        });
       }
     }
     
@@ -275,6 +283,9 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
             firstName
             lastName
             companyName
+            defaultProperty {
+              id
+            }
           }
           userErrors {
             message
@@ -303,24 +314,67 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
       throw new Error(createResult.clientCreate.userErrors[0].message);
     }
     
-    res.json({ client: createResult.clientCreate.client, created: true });
+    const client = createResult.clientCreate.client;
+    res.json({ 
+      client, 
+      propertyId: client.defaultProperty?.id,
+      created: true 
+    });
   } catch (err) {
     console.error('Find/create client error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
+app.get('/api/jobber/introspect-quote', async (req, res) => {
+  try {
+    const introspectionQuery = `
+      query IntrospectQuoteCreateAttributes {
+        __type(name: "QuoteCreateAttributes") {
+          name
+          kind
+          inputFields {
+            name
+            type {
+              name
+              kind
+              ofType {
+                name
+                kind
+              }
+            }
+          }
+        }
+      }
+    `;
+    
+    const result = await jobberGraphQL(introspectionQuery);
+    res.json({ QuoteCreateAttributes: result.__type });
+  } catch (err) {
+    console.error('Introspection error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/jobber/create-quote', async (req, res) => {
   try {
-    const { clientId, title, lineItems, notes } = req.body;
+    const { clientId, propertyId, title, lineItems, notes } = req.body;
+    
+    if (!propertyId) {
+      throw new Error('Property ID is required to create a quote');
+    }
     
     const createMutation = `
-      mutation CreateQuote($input: QuoteCreateInput!) {
-        quoteCreate(input: $input) {
+      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [QuoteLineItemCreateInput!]!) {
+        quoteCreate(attributes: {
+          clientId: $clientId
+          propertyId: $propertyId
+          title: $title
+          lineItems: $lineItems
+        }) {
           quote {
             id
             quoteNumber
-            total
             jobberWebUri
           }
           userErrors {
@@ -331,22 +385,19 @@ app.post('/api/jobber/create-quote', async (req, res) => {
       }
     `;
     
-    const input = {
+    const variables = {
       clientId,
+      propertyId,
       title: title || 'Spray Foam Estimate',
       lineItems: lineItems.map(item => ({
         name: item.name,
         description: item.description || '',
         quantity: item.quantity || 1,
-        unitPrice: item.unitPrice,
+        unitPrice: String(item.unitPrice),
       })),
     };
     
-    if (notes) {
-      input.internalNotes = notes;
-    }
-    
-    const result = await jobberGraphQL(createMutation, { input });
+    const result = await jobberGraphQL(createMutation, variables);
     
     if (result.quoteCreate.userErrors?.length > 0) {
       throw new Error(result.quoteCreate.userErrors[0].message);

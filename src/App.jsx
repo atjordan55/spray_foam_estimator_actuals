@@ -630,7 +630,11 @@ export default function SprayFoamEstimator() {
         throw new Error(err.error || 'Failed to create client');
       }
       
-      const { client } = await clientResponse.json();
+      const { client, propertyId } = await clientResponse.json();
+      
+      if (!propertyId) {
+        throw new Error('Client does not have a default property. Please add a property to the client in Jobber first.');
+      }
       
       const lineItems = [];
       
@@ -685,6 +689,7 @@ export default function SprayFoamEstimator() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId: client.id,
+          propertyId,
           title: estimateName || 'Spray Foam Estimate',
           lineItems,
           notes: projectNotes,
