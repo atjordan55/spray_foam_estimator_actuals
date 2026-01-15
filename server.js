@@ -455,7 +455,8 @@ app.post('/api/jobber/create-quote', async (req, res) => {
       name: item.name,
       description: item.description || '',
       quantity: item.quantity || 1,
-      unitPrice: String(item.unitPrice.toFixed(2)),
+      unitPrice: parseFloat(item.unitPrice.toFixed(2)),
+      saveToProductsAndServices: false,
     }));
     
     const createMutation = `
