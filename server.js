@@ -113,16 +113,18 @@ app.get('/auth/jobber/callback', async (req, res) => {
     });
     
     const tokens = await tokenResponse.json();
+    console.log('Token response:', JSON.stringify(tokens, null, 2));
     
     if (tokens.error) {
       console.error('Token error:', tokens);
       return res.redirect('/?jobber_error=' + encodeURIComponent(tokens.error_description || tokens.error));
     }
     
+    const expiresIn = tokens.expires_in || 3600;
     const tokenData = {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
-      expires_at: Date.now() + (tokens.expires_in * 1000),
+      expires_at: Date.now() + (expiresIn * 1000),
     };
     
     await saveTokens(tokenData);
@@ -162,10 +164,11 @@ async function refreshTokenIfNeeded() {
         return null;
       }
       
+      const newExpiresIn = newTokens.expires_in || 3600;
       const tokenData = {
         access_token: newTokens.access_token,
         refresh_token: newTokens.refresh_token,
-        expires_at: Date.now() + (newTokens.expires_in * 1000),
+        expires_at: Date.now() + (newExpiresIn * 1000),
       };
       
       await saveTokens(tokenData);
