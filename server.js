@@ -8,6 +8,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  if (req.path.startsWith('/api/')) {
+    console.log(`API Request: ${req.method} ${req.path}`);
+  }
+  next();
+});
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
