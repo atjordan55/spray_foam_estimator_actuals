@@ -87,5 +87,27 @@ Preferred communication style: Simple, everyday language.
 - **postcss**: ^8.4.0 - CSS transformation tool
 - **autoprefixer**: ^10.4.0 - Adds vendor prefixes to CSS
 
+### Jobber Integration
+- **OAuth 2.0 Authentication**: Connect to Jobber via OAuth flow
+- **Client Management**: Search for existing clients by email/phone/name, create new clients if not found
+- **Property Management**: Automatically retrieve or create properties for clients
+- **Quote Creation**: Send estimates to Jobber as quotes with line items
+- **Line Item Mapping**:
+  - Material line items: Area Name + Foam Type + Thickness, Quantity = Sq Ft, Unit Price = $/Sq Ft
+  - Labor line item: "Complete Spray Foam Insulation Solution" with full-service description
+- **Dynamic Descriptions**: Area Type + Foam Type combinations generate specific descriptions:
+  - Exterior Walls + Closed Cell: Thermal barrier, moisture seal, structural enhancement
+  - Exterior Walls + Open Cell: Air seal, sound deadening, thermal resistance
+  - Roof Deck + Closed Cell: Air seal, moisture barrier, thermal resistance
+  - Roof Deck + Open Cell: Air seal, sound deadening, thermal resistance
+- **Token Storage**: PostgreSQL database stores OAuth tokens with automatic refresh
+
+### Area Types
+- General Area: Standard rectangular area calculation
+- Exterior Walls: Wall cavities with specific insulation descriptions
+- Roof Deck: Roof areas with pitch multiplier option
+- Gable: Triangular area calculation (0.5 × length × width)
+
 ### External Services
-- None currently configured - this is a standalone client-side application
+- **Jobber API**: GraphQL API (version 2025-04-16) for quote and client management
+- **PostgreSQL**: Database for OAuth token storage

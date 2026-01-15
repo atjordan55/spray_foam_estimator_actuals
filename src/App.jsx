@@ -638,14 +638,35 @@ export default function SprayFoamEstimator() {
       
       const lineItems = [];
       
+      const getLineItemDescription = (area, foamApp, rValue) => {
+        const thickness = foamApp.foamThickness;
+        const rValueFormatted = rValue.toFixed(1);
+        
+        if (area.areaType === "Exterior Walls" && foamApp.foamType === "Closed") {
+          return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high-performance thermal barrier, moisture seal, and structural enhancement. Includes sealing around all windows and doors as well as sealing bottom plates.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        if (area.areaType === "Exterior Walls" && foamApp.foamType === "Open") {
+          return `Open-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high performance air seal, sound deadening, and high level thermal resistance. Includes sealing around all windows and doors as well as sealing bottom plates.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        if (area.areaType === "Roof Deck" && foamApp.foamType === "Closed") {
+          return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high-performance air seal, moisture barrier, and superior thermal resistance.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        if (area.areaType === "Roof Deck" && foamApp.foamType === "Open") {
+          return `Open cell spray foam applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high performance air seal, sound deadening, and high level thermal resistance.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        return '';
+      };
+      
       sprayAreas.forEach(area => {
         area.foamApplications.forEach(foamApp => {
           const calcs = calculateFoamApplicationCost(area, foamApp);
           const sqft = Math.round(calcs.sqft);
           const pricePerSqFt = calcs.pricePerSqFt || (sqft > 0 ? calcs.totalCost / sqft : 0);
+          const description = getLineItemDescription(area, foamApp, calcs.rValue);
           
           lineItems.push({
             name: `${area.name} (${foamApp.foamType} Cell ${foamApp.foamThickness}in)`,
+            description,
             quantity: sqft,
             unitPrice: pricePerSqFt,
           });
@@ -1126,7 +1147,7 @@ export default function SprayFoamEstimator() {
                             onChange={(e) => updateArea(areaIndex, 'areaType', e.target.value)}
                             className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           >
-                            {["General Area", "Roof Deck", "Gable"].map(opt => (
+                            {["General Area", "Exterior Walls", "Roof Deck", "Gable"].map(opt => (
                               <option key={opt} value={opt}>{opt}</option>
                             ))}
                           </select>
