@@ -641,48 +641,16 @@ export default function SprayFoamEstimator() {
       sprayAreas.forEach(area => {
         area.foamApplications.forEach(foamApp => {
           const calcs = calculateFoamApplicationCost(area, foamApp);
+          const sqft = Math.round(calcs.sqft);
+          const pricePerSqFt = calcs.pricePerSqFt || (sqft > 0 ? calcs.totalCost / sqft : 0);
+          
           lineItems.push({
-            name: `${area.name} - ${foamApp.foamType} Cell Foam (${foamApp.foamThickness}")`,
-            description: `${calcs.sqft.toFixed(0)} sq ft, R-${calcs.rValue.toFixed(1)}, ${calcs.gallons.toFixed(1)} gallons`,
-            quantity: 1,
-            unitPrice: calcs.totalCost,
+            name: `${area.name} (${foamApp.foamType} Cell ${foamApp.foamThickness}in)`,
+            quantity: sqft,
+            unitPrice: pricePerSqFt,
           });
         });
       });
-      
-      if (baseLaborCost + laborMarkupAmount > 0) {
-        lineItems.push({
-          name: 'Labor',
-          description: `${globalInputs.laborHours} hours @ $${chargedLaborRate.toFixed(2)}/hr`,
-          quantity: 1,
-          unitPrice: baseLaborCost + laborMarkupAmount,
-        });
-      }
-      
-      if (fuelCost > 0) {
-        lineItems.push({
-          name: 'Travel',
-          description: `${globalInputs.travelDistance} miles @ $${globalInputs.travelRate}/mile`,
-          quantity: 1,
-          unitPrice: fuelCost,
-        });
-      }
-      
-      if (globalInputs.wasteDisposal > 0) {
-        lineItems.push({
-          name: 'Waste Disposal',
-          quantity: 1,
-          unitPrice: globalInputs.wasteDisposal,
-        });
-      }
-      
-      if (globalInputs.equipmentRental > 0) {
-        lineItems.push({
-          name: 'Equipment Rental',
-          quantity: 1,
-          unitPrice: globalInputs.equipmentRental,
-        });
-      }
       
       const quoteResponse = await fetch('/api/jobber/create-quote', {
         method: 'POST',

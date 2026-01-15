@@ -242,38 +242,52 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
   try {
     const { name, email, phone, address } = req.body;
     
-    if (email) {
-      const searchQuery = `
-        query SearchClients($searchTerm: String!) {
-          clients(searchTerm: $searchTerm, first: 1) {
-            nodes {
+    const searchQuery = `
+      query SearchClients($searchTerm: String!) {
+        clients(searchTerm: $searchTerm, first: 5) {
+          nodes {
+            id
+            firstName
+            lastName
+            companyName
+            defaultProperty {
               id
-              firstName
-              lastName
-              companyName
-              defaultProperty {
-                id
-              }
             }
           }
         }
-      `;
+      }
+    `;
+    
+    const searchTerms = [email, phone, name].filter(Boolean);
+    
+    for (const term of searchTerms) {
+      if (!term) continue;
       
-      const searchResult = await jobberGraphQL(searchQuery, { searchTerm: email });
-      
-      if (searchResult.clients.nodes.length > 0) {
-        const client = searchResult.clients.nodes[0];
-        return res.json({ 
-          client, 
-          propertyId: client.defaultProperty?.id,
-          created: false 
-        });
+      try {
+        const searchResult = await jobberGraphQL(searchQuery, { searchTerm: term });
+        
+        if (searchResult.clients.nodes.length > 0) {
+          const client = searchResult.clients.nodes[0];
+          let propertyId = client.defaultProperty?.id;
+          
+          if (!propertyId && address) {
+            propertyId = await createPropertyForClient(client.id, address);
+          }
+          
+          return res.json({ 
+            client, 
+            propertyId,
+            created: false 
+          });
+        }
+      } catch (searchErr) {
+        console.log(`Search by "${term}" failed:`, searchErr.message);
       }
     }
     
-    const nameParts = (name || 'Unknown').split(' ');
+    const nameParts = (name || 'Unknown Customer').split(' ');
     const firstName = nameParts[0] || 'Unknown';
-    const lastName = nameParts.slice(1).join(' ') || '';
+    const lastName = nameParts.slice(1).join(' ') || 'Customer';
     
     const createMutation = `
       mutation CreateClient($input: ClientCreateInput!) {
@@ -297,7 +311,7 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
     
     const input = {
       firstName,
-      lastName: lastName || undefined,
+      lastName,
     };
     
     if (email) {
@@ -315,9 +329,15 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
     }
     
     const client = createResult.clientCreate.client;
+    let propertyId = client.defaultProperty?.id;
+    
+    if (!propertyId && address) {
+      propertyId = await createPropertyForClient(client.id, address);
+    }
+    
     res.json({ 
       client, 
-      propertyId: client.defaultProperty?.id,
+      propertyId,
       created: true 
     });
   } catch (err) {
@@ -325,6 +345,44 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+async function createPropertyForClient(clientId, address) {
+  try {
+    const createPropertyMutation = `
+      mutation CreateProperty($clientId: EncodedId!, $street1: String!) {
+        propertyCreate(attributes: {
+          clientId: $clientId
+          address: {
+            street1: $street1
+          }
+        }) {
+          property {
+            id
+          }
+          userErrors {
+            message
+            path
+          }
+        }
+      }
+    `;
+    
+    const result = await jobberGraphQL(createPropertyMutation, {
+      clientId,
+      street1: address,
+    });
+    
+    if (result.propertyCreate.userErrors?.length > 0) {
+      console.error('Property create error:', result.propertyCreate.userErrors);
+      return null;
+    }
+    
+    return result.propertyCreate.property?.id;
+  } catch (err) {
+    console.error('Create property error:', err.message);
+    return null;
+  }
+}
 
 app.get('/api/jobber/introspect-quote', async (req, res) => {
   try {
