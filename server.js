@@ -250,9 +250,6 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
             firstName
             lastName
             companyName
-            defaultProperty {
-              id
-            }
           }
         }
       }
@@ -268,7 +265,7 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
         
         if (searchResult.clients.nodes.length > 0) {
           const client = searchResult.clients.nodes[0];
-          let propertyId = client.defaultProperty?.id;
+          let propertyId = await getClientProperty(client.id);
           
           if (!propertyId && address) {
             propertyId = await createPropertyForClient(client.id, address);
@@ -297,9 +294,6 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
             firstName
             lastName
             companyName
-            defaultProperty {
-              id
-            }
           }
           userErrors {
             message
@@ -329,9 +323,9 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
     }
     
     const client = createResult.clientCreate.client;
-    let propertyId = client.defaultProperty?.id;
+    let propertyId = null;
     
-    if (!propertyId && address) {
+    if (address) {
       propertyId = await createPropertyForClient(client.id, address);
     }
     
@@ -345,6 +339,28 @@ app.post('/api/jobber/find-or-create-client', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+async function getClientProperty(clientId) {
+  try {
+    const propertiesQuery = `
+      query GetClientProperties($clientId: EncodedId!) {
+        client(id: $clientId) {
+          properties(first: 1) {
+            nodes {
+              id
+            }
+          }
+        }
+      }
+    `;
+    
+    const result = await jobberGraphQL(propertiesQuery, { clientId });
+    return result.client?.properties?.nodes?.[0]?.id || null;
+  } catch (err) {
+    console.error('Get client property error:', err.message);
+    return null;
+  }
+}
 
 async function createPropertyForClient(clientId, address) {
   try {
