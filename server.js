@@ -193,12 +193,22 @@ async function jobberGraphQL(query, variables = {}) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${tokens.access_token}`,
-      'X-JOBBER-GRAPHQL-VERSION': '2024-06-03',
+      'X-JOBBER-GRAPHQL-VERSION': '2023-11-15',
     },
     body: JSON.stringify({ query, variables }),
   });
   
-  const result = await response.json();
+  const responseText = await response.text();
+  console.log('GraphQL response status:', response.status);
+  console.log('GraphQL response:', responseText.substring(0, 500));
+  
+  let result;
+  try {
+    result = JSON.parse(responseText);
+  } catch (e) {
+    console.error('Failed to parse GraphQL response:', responseText.substring(0, 200));
+    throw new Error('Invalid response from Jobber API');
+  }
   
   if (result.errors) {
     console.error('GraphQL errors:', JSON.stringify(result.errors, null, 2));
