@@ -652,6 +652,16 @@ export default function SprayFoamEstimator() {
         });
       });
       
+      const laborTotal = baseLaborCost + laborMarkupAmount;
+      if (laborTotal > 0) {
+        lineItems.push({
+          name: 'Complete Spray Foam Insulation Solution',
+          description: 'Includes a full-service spray foam insulation package: on-site evaluation, masking and surface prep, application of open or closed cell spray foam at the specified thickness, and post-job cleanup. Designed to deliver maximum R-value, air sealing, and moisture control for residential or commercial projects.',
+          quantity: 1,
+          unitPrice: laborTotal,
+        });
+      }
+      
       const quoteResponse = await fetch('/api/jobber/create-quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
