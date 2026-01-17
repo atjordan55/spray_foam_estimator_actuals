@@ -22,8 +22,8 @@ const pool = new Pool({
 
 const JOBBER_CLIENT_ID = process.env.JOBBER_CLIENT_ID;
 const JOBBER_CLIENT_SECRET = process.env.JOBBER_CLIENT_SECRET;
-const REPLIT_DEV_DOMAIN = process.env.REPLIT_DEV_DOMAIN || 'localhost:5000';
-const REDIRECT_URI = `https://${REPLIT_DEV_DOMAIN}/auth/jobber/callback`;
+const REPLIT_DOMAIN = process.env.REPLIT_DOMAINS || process.env.REPLIT_DEV_DOMAIN || 'localhost:5000';
+const REDIRECT_URI = `https://${REPLIT_DOMAIN}/auth/jobber/callback`;
 const JOBBER_AUTH_URL = 'https://api.getjobber.com/api/oauth/authorize';
 const JOBBER_TOKEN_URL = 'https://api.getjobber.com/api/oauth/token';
 const JOBBER_API_URL = 'https://api.getjobber.com/api/graphql';
