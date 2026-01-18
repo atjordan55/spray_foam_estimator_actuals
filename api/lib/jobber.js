@@ -1,18 +1,75 @@
-const { getTokens, saveTokens, deleteTokens } = require('./database');
+const { neon } = require('@neondatabase/serverless');
 
 const JOBBER_TOKEN_URL = 'https://api.getjobber.com/api/oauth/token';
 const JOBBER_API_URL = 'https://api.getjobber.com/api/graphql';
 
-const fetchFn = typeof fetch !== 'undefined' ? fetch : require('node-fetch');
+function getDb() {
+  return neon(process.env.DATABASE_URL);
+}
 
-function getRedirectUri() {
-  if (process.env.VERCEL_ENV === 'production') {
-    return 'https://spray-form-estimator.vercel.app/api/auth/jobber/callback';
+async function initDatabase() {
+  const sql = getDb();
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS jobber_tokens (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT single_row CHECK (id = 1)
+      )
+    `;
+  } catch (err) {
+    console.error('Database init error:', err);
   }
-  const baseUrl = process.env.VERCEL_URL 
-    ? `https://${process.env.VERCEL_URL}` 
-    : process.env.BASE_URL || 'http://localhost:5000';
-  return `${baseUrl}/api/auth/jobber/callback`;
+}
+
+async function getTokens() {
+  const sql = getDb();
+  try {
+    await initDatabase();
+    const result = await sql`SELECT * FROM jobber_tokens WHERE id = 1`;
+    if (result.length > 0) {
+      return {
+        access_token: result[0].access_token,
+        refresh_token: result[0].refresh_token,
+        expires_at: parseInt(result[0].expires_at),
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error('Get tokens error:', err);
+    return null;
+  }
+}
+
+async function saveTokens(tokens) {
+  const sql = getDb();
+  try {
+    await initDatabase();
+    await sql`
+      INSERT INTO jobber_tokens (id, access_token, refresh_token, expires_at, updated_at)
+      VALUES (1, ${tokens.access_token}, ${tokens.refresh_token}, ${tokens.expires_at}, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        access_token = ${tokens.access_token},
+        refresh_token = ${tokens.refresh_token},
+        expires_at = ${tokens.expires_at},
+        updated_at = NOW()
+    `;
+  } catch (err) {
+    console.error('Save tokens error:', err);
+  }
+}
+
+async function deleteTokens() {
+  const sql = getDb();
+  try {
+    await sql`DELETE FROM jobber_tokens WHERE id = 1`;
+  } catch (err) {
+    console.error('Delete tokens error:', err);
+  }
 }
 
 async function refreshTokenIfNeeded() {
@@ -21,7 +78,7 @@ async function refreshTokenIfNeeded() {
   
   if (Date.now() > tokens.expires_at - 60000) {
     try {
-      const tokenResponse = await fetchFn(JOBBER_TOKEN_URL, {
+      const tokenResponse = await fetch(JOBBER_TOKEN_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -66,7 +123,7 @@ async function jobberGraphQL(query, variables = {}) {
     throw new Error('Not connected to Jobber');
   }
   
-  const response = await fetchFn(JOBBER_API_URL, {
+  const response = await fetch(JOBBER_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -160,10 +217,9 @@ async function createPropertyForClient(clientId, address) {
 }
 
 module.exports = { 
-  getRedirectUri, 
-  refreshTokenIfNeeded, 
   jobberGraphQL, 
   getClientProperty, 
   createPropertyForClient,
-  JOBBER_TOKEN_URL 
+  getTokens,
+  deleteTokens
 };

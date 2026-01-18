@@ -1,21 +1,13 @@
-const { Pool } = require('pg');
+const { neon } = require('@neondatabase/serverless');
 
-let pool = null;
-
-function getPool() {
-  if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
-    });
-  }
-  return pool;
+function getDb() {
+  return neon(process.env.DATABASE_URL);
 }
 
 async function initDatabase() {
-  const pool = getPool();
+  const sql = getDb();
   try {
-    await pool.query(`
+    await sql`
       CREATE TABLE IF NOT EXISTS jobber_tokens (
         id INTEGER PRIMARY KEY DEFAULT 1,
         access_token TEXT NOT NULL,
@@ -25,22 +17,22 @@ async function initDatabase() {
         updated_at TIMESTAMP DEFAULT NOW(),
         CONSTRAINT single_row CHECK (id = 1)
       )
-    `);
+    `;
   } catch (err) {
     console.error('Database init error:', err);
   }
 }
 
 async function getTokens() {
-  const pool = getPool();
+  const sql = getDb();
   try {
     await initDatabase();
-    const result = await pool.query('SELECT * FROM jobber_tokens WHERE id = 1');
-    if (result.rows.length > 0) {
+    const result = await sql`SELECT * FROM jobber_tokens WHERE id = 1`;
+    if (result.length > 0) {
       return {
-        access_token: result.rows[0].access_token,
-        refresh_token: result.rows[0].refresh_token,
-        expires_at: parseInt(result.rows[0].expires_at),
+        access_token: result[0].access_token,
+        refresh_token: result[0].refresh_token,
+        expires_at: parseInt(result[0].expires_at),
       };
     }
     return null;
@@ -51,30 +43,30 @@ async function getTokens() {
 }
 
 async function saveTokens(tokens) {
-  const pool = getPool();
+  const sql = getDb();
   try {
     await initDatabase();
-    await pool.query(`
+    await sql`
       INSERT INTO jobber_tokens (id, access_token, refresh_token, expires_at, updated_at)
-      VALUES (1, $1, $2, $3, NOW())
+      VALUES (1, ${tokens.access_token}, ${tokens.refresh_token}, ${tokens.expires_at}, NOW())
       ON CONFLICT (id) DO UPDATE SET
-        access_token = $1,
-        refresh_token = $2,
-        expires_at = $3,
+        access_token = ${tokens.access_token},
+        refresh_token = ${tokens.refresh_token},
+        expires_at = ${tokens.expires_at},
         updated_at = NOW()
-    `, [tokens.access_token, tokens.refresh_token, tokens.expires_at]);
+    `;
   } catch (err) {
     console.error('Save tokens error:', err);
   }
 }
 
 async function deleteTokens() {
-  const pool = getPool();
+  const sql = getDb();
   try {
-    await pool.query('DELETE FROM jobber_tokens WHERE id = 1');
+    await sql`DELETE FROM jobber_tokens WHERE id = 1`;
   } catch (err) {
     console.error('Delete tokens error:', err);
   }
 }
 
-module.exports = { getPool, initDatabase, getTokens, saveTokens, deleteTokens };
+module.exports = { getDb, initDatabase, getTokens, saveTokens, deleteTokens };

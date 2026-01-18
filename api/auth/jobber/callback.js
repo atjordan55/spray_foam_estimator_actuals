@@ -1,23 +1,16 @@
-const { Pool } = require('pg');
+const { neon } = require('@neondatabase/serverless');
 
 const JOBBER_TOKEN_URL = 'https://api.getjobber.com/api/oauth/token';
 const BASE_URL = 'https://spray-form-estimator.vercel.app';
 const REDIRECT_URI = `${BASE_URL}/api/auth/jobber/callback`;
 
-let pool = null;
-function getPool() {
-  if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
-    });
-  }
-  return pool;
+function getDb() {
+  return neon(process.env.DATABASE_URL);
 }
 
 async function initDatabase() {
-  const db = getPool();
-  await db.query(`
+  const sql = getDb();
+  await sql`
     CREATE TABLE IF NOT EXISTS jobber_tokens (
       id INTEGER PRIMARY KEY DEFAULT 1,
       access_token TEXT NOT NULL,
@@ -27,21 +20,21 @@ async function initDatabase() {
       updated_at TIMESTAMP DEFAULT NOW(),
       CONSTRAINT single_row CHECK (id = 1)
     )
-  `);
+  `;
 }
 
 async function saveTokens(tokens) {
-  const db = getPool();
+  const sql = getDb();
   await initDatabase();
-  await db.query(`
+  await sql`
     INSERT INTO jobber_tokens (id, access_token, refresh_token, expires_at, updated_at)
-    VALUES (1, $1, $2, $3, NOW())
+    VALUES (1, ${tokens.access_token}, ${tokens.refresh_token}, ${tokens.expires_at}, NOW())
     ON CONFLICT (id) DO UPDATE SET
-      access_token = $1,
-      refresh_token = $2,
-      expires_at = $3,
+      access_token = ${tokens.access_token},
+      refresh_token = ${tokens.refresh_token},
+      expires_at = ${tokens.expires_at},
       updated_at = NOW()
-  `, [tokens.access_token, tokens.refresh_token, tokens.expires_at]);
+  `;
 }
 
 module.exports = async function handler(req, res) {
@@ -56,9 +49,7 @@ module.exports = async function handler(req, res) {
   }
   
   try {
-    const fetchFn = typeof fetch !== 'undefined' ? fetch : require('node-fetch');
-    
-    const tokenResponse = await fetchFn(JOBBER_TOKEN_URL, {
+    const tokenResponse = await fetch(JOBBER_TOKEN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
