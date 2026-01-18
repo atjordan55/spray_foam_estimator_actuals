@@ -1,11 +1,18 @@
 const { saveTokens } = require('../../lib/database');
 const { getRedirectUri, JOBBER_TOKEN_URL } = require('../../lib/jobber');
 
+const fetchFn = typeof fetch !== 'undefined' ? fetch : require('node-fetch');
+
 module.exports = async function handler(req, res) {
   const { code, error } = req.query;
-  const baseUrl = process.env.VERCEL_URL 
-    ? `https://${process.env.VERCEL_URL}` 
-    : process.env.BASE_URL || 'http://localhost:5000';
+  let baseUrl;
+  if (process.env.VERCEL_ENV === 'production') {
+    baseUrl = 'https://spray-form-estimator.vercel.app';
+  } else {
+    baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : process.env.BASE_URL || 'http://localhost:5000';
+  }
   
   if (error) {
     return res.redirect(307, `${baseUrl}/?jobber_error=${encodeURIComponent(error)}`);
@@ -18,7 +25,7 @@ module.exports = async function handler(req, res) {
   try {
     const redirectUri = getRedirectUri();
     
-    const tokenResponse = await fetch(JOBBER_TOKEN_URL, {
+    const tokenResponse = await fetchFn(JOBBER_TOKEN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

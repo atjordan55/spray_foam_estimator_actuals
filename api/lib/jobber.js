@@ -3,7 +3,12 @@ const { getTokens, saveTokens, deleteTokens } = require('./database');
 const JOBBER_TOKEN_URL = 'https://api.getjobber.com/api/oauth/token';
 const JOBBER_API_URL = 'https://api.getjobber.com/api/graphql';
 
+const fetchFn = typeof fetch !== 'undefined' ? fetch : require('node-fetch');
+
 function getRedirectUri() {
+  if (process.env.VERCEL_ENV === 'production') {
+    return 'https://spray-form-estimator.vercel.app/api/auth/jobber/callback';
+  }
   const baseUrl = process.env.VERCEL_URL 
     ? `https://${process.env.VERCEL_URL}` 
     : process.env.BASE_URL || 'http://localhost:5000';
@@ -16,7 +21,7 @@ async function refreshTokenIfNeeded() {
   
   if (Date.now() > tokens.expires_at - 60000) {
     try {
-      const tokenResponse = await fetch(JOBBER_TOKEN_URL, {
+      const tokenResponse = await fetchFn(JOBBER_TOKEN_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -61,7 +66,7 @@ async function jobberGraphQL(query, variables = {}) {
     throw new Error('Not connected to Jobber');
   }
   
-  const response = await fetch(JOBBER_API_URL, {
+  const response = await fetchFn(JOBBER_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
