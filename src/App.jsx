@@ -63,7 +63,7 @@ const createFoamApplication = (foamType = "Open") => {
     foamType: "Open",
     foamThickness: 6,
     materialPrice: 1870,
-    materialMarkup: 75,
+    materialMarkup: 147.47,
     boardFeetPerSet: 14000
   };
 };
