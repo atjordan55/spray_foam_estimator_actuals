@@ -16,45 +16,88 @@ module.exports = async function handler(req, res) {
   try {
     const { name, email, phone, address } = req.body;
     
+    // Search query that returns email and phone details for better matching
     const searchQuery = `
       query SearchClients($searchTerm: String!) {
-        clients(searchTerm: $searchTerm, first: 5) {
+        clients(searchTerm: $searchTerm, first: 10) {
           nodes {
             id
             firstName
             lastName
             companyName
+            emails {
+              address
+            }
+            phones {
+              number
+            }
           }
         }
       }
     `;
     
-    const searchTerms = [email, phone, name].filter(Boolean);
+    // Helper to normalize phone numbers for comparison (remove non-digits)
+    const normalizePhone = (p) => p ? p.replace(/\D/g, '') : '';
     
-    for (const term of searchTerms) {
-      if (!term) continue;
-      
+    // Helper to normalize email for comparison (lowercase, trim)
+    const normalizeEmail = (e) => e ? e.toLowerCase().trim() : '';
+    
+    // 1. Search by EMAIL first (most unique identifier)
+    if (email) {
       try {
-        const searchResult = await jobberGraphQL(searchQuery, { searchTerm: term });
+        const searchResult = await jobberGraphQL(searchQuery, { searchTerm: email });
         
-        if (searchResult.clients.nodes.length > 0) {
-          const client = searchResult.clients.nodes[0];
-          let propertyId = await getClientProperty(client.id);
-          
+        // Find exact email match
+        const exactMatch = searchResult.clients.nodes.find(client => 
+          client.emails?.some(e => normalizeEmail(e.address) === normalizeEmail(email))
+        );
+        
+        if (exactMatch) {
+          let propertyId = await getClientProperty(exactMatch.id);
           if (!propertyId && address) {
-            propertyId = await createPropertyForClient(client.id, address);
+            propertyId = await createPropertyForClient(exactMatch.id, address);
           }
-          
           return res.json({ 
-            client, 
+            client: exactMatch, 
             propertyId,
-            created: false 
+            created: false,
+            matchedBy: 'email'
           });
         }
       } catch (searchErr) {
-        console.log(`Search by "${term}" failed:`, searchErr.message);
+        console.log(`Email search failed:`, searchErr.message);
       }
     }
+    
+    // 2. Search by PHONE number (second most unique)
+    if (phone) {
+      try {
+        const searchResult = await jobberGraphQL(searchQuery, { searchTerm: phone });
+        const normalizedInputPhone = normalizePhone(phone);
+        
+        // Find exact phone match (comparing normalized numbers)
+        const exactMatch = searchResult.clients.nodes.find(client => 
+          client.phones?.some(p => normalizePhone(p.number) === normalizedInputPhone)
+        );
+        
+        if (exactMatch) {
+          let propertyId = await getClientProperty(exactMatch.id);
+          if (!propertyId && address) {
+            propertyId = await createPropertyForClient(exactMatch.id, address);
+          }
+          return res.json({ 
+            client: exactMatch, 
+            propertyId,
+            created: false,
+            matchedBy: 'phone'
+          });
+        }
+      } catch (searchErr) {
+        console.log(`Phone search failed:`, searchErr.message);
+      }
+    }
+    
+    // 3. No exact match found - create new client
     
     const nameParts = (name || 'Unknown Customer').split(' ');
     const firstName = nameParts[0] || 'Unknown';
