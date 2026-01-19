@@ -287,13 +287,18 @@ export default function SprayFoamEstimator() {
     const materialCost = foamApp.materialPrice * 1.20;
     const baseMaterialCost = sets * materialCost;
     const markupAmount = baseMaterialCost * (foamApp.materialMarkup / 100);
-    const totalCost = baseMaterialCost + markupAmount;
+    
+    // Calculate pricePerSqFt rounded to 2 decimals, then derive totalCost from it
+    // This ensures displayed $/Sq Ft × Sq Ft = Total (for Jobber consistency)
+    const rawTotal = baseMaterialCost + markupAmount;
+    const pricePerSqFt = sqft > 0 ? Math.round((rawTotal / sqft) * 100) / 100 : 0;
+    const totalCost = pricePerSqFt * sqft;
     
     // R-Value calculation: Closed Cell = 7.2 per inch, Open Cell = 3.8 per inch
     const rValuePerInch = foamApp.foamType === "Closed" ? 7.2 : 3.8;
     const rValue = rValuePerInch * foamApp.foamThickness;
 
-    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost, rValue };
+    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost, rValue, pricePerSqFt };
   };
 
   const validateAndSet = (value, setter, key, currentState) => {
@@ -661,14 +666,13 @@ export default function SprayFoamEstimator() {
         area.foamApplications.forEach(foamApp => {
           const calcs = calculateFoamApplicationCost(area, foamApp);
           const sqft = Math.round(calcs.sqft);
-          const pricePerSqFt = calcs.pricePerSqFt || (sqft > 0 ? calcs.totalCost / sqft : 0);
           const description = getLineItemDescription(area, foamApp, calcs.rValue);
           
           lineItems.push({
             name: `${area.name} (${foamApp.foamType} Cell ${foamApp.foamThickness}in)`,
             description,
             quantity: sqft,
-            unitPrice: pricePerSqFt,
+            unitPrice: calcs.pricePerSqFt,
           });
         });
       });
@@ -1350,7 +1354,7 @@ export default function SprayFoamEstimator() {
                                       type="number"
                                       step="0.01"
                                       min="0"
-                                      value={pricePerSqFtInputs[foamKey] !== undefined ? pricePerSqFtInputs[foamKey] : (foamCalcs.sqft > 0 ? (foamCalcs.totalCost / foamCalcs.sqft).toFixed(2) : "")}
+                                      value={pricePerSqFtInputs[foamKey] !== undefined ? pricePerSqFtInputs[foamKey] : (foamCalcs.pricePerSqFt ? foamCalcs.pricePerSqFt.toFixed(2) : "")}
                                       onChange={(e) => handlePricePerSqFtInputChange(foamKey, e.target.value)}
                                       onBlur={() => handlePricePerSqFtBlur(areaIndex, foamIndex, foamApp)}
                                       className={`w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${pricePerSqFtErrors[foamKey] ? 'border-red-500' : 'border-gray-300'}`}
