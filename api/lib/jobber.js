@@ -195,7 +195,7 @@ async function createPropertyForClient(clientId, address) {
       clientId,
       input: {
         properties: [{
-          mapAddress: {
+          address: {
             street1: address,
           }
         }]
