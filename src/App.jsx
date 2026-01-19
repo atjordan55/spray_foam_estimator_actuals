@@ -673,7 +673,8 @@ export default function SprayFoamEstimator() {
         });
       });
       
-      const laborTotal = baseLaborCost + laborMarkupAmount;
+      const fuelCostAmount = globalInputs.travelDistance * globalInputs.travelRate;
+      const laborTotal = baseLaborCost + laborMarkupAmount + fuelCostAmount + globalInputs.wasteDisposal + globalInputs.equipmentRental;
       if (laborTotal > 0) {
         lineItems.push({
           name: 'Complete Spray Foam Insulation Solution',
