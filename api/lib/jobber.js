@@ -180,7 +180,7 @@ async function createPropertyForClient(clientId, address) {
     const createPropertyMutation = `
       mutation CreateProperty($clientId: EncodedId!, $input: PropertyCreateInput!) {
         propertyCreate(clientId: $clientId, input: $input) {
-          properties {
+          property {
             id
           }
           userErrors {
@@ -200,19 +200,23 @@ async function createPropertyForClient(clientId, address) {
       },
     });
     
+    console.log('Property create result:', JSON.stringify(result, null, 2));
+    
     if (result.propertyCreate.userErrors?.length > 0) {
-      console.error('Property create error:', result.propertyCreate.userErrors);
-      return null;
+      const errorMsg = result.propertyCreate.userErrors[0].message;
+      console.error('Property create error:', errorMsg);
+      throw new Error(errorMsg);
     }
     
-    const properties = result.propertyCreate?.properties;
-    if (Array.isArray(properties) && properties.length > 0) {
-      return properties[0].id;
+    const propertyId = result.propertyCreate?.property?.id;
+    if (propertyId) {
+      return propertyId;
     }
+    
     return null;
   } catch (err) {
     console.error('Create property error:', err.message);
-    return null;
+    throw err;
   }
 }
 
