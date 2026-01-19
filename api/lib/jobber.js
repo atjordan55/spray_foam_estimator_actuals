@@ -194,9 +194,11 @@ async function createPropertyForClient(clientId, address) {
     const result = await jobberGraphQL(createPropertyMutation, {
       clientId,
       input: {
-        mapAddress: {
-          street1: address,
-        }
+        properties: [{
+          mapAddress: {
+            street1: address,
+          }
+        }]
       },
     });
     
