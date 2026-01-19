@@ -123,7 +123,7 @@ module.exports = async function handler(req, res) {
     const input = {
       firstName,
       lastName,
-      sourceAttribution: null,
+      sourceAttribution: { sourceText: "" },
     };
     
     if (email) {
