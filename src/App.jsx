@@ -1315,11 +1315,9 @@ export default function SprayFoamEstimator() {
                                     </label>
                                     <input
                                       type="number"
-                                      step="1"
-                                      min="0"
-                                      value={foamApp.boardFeetPerSet === 0 ? "" : foamApp.boardFeetPerSet}
-                                      onChange={(e) => updateFoamApplication(areaIndex, foamIndex, 'boardFeetPerSet', e.target.value)}
-                                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      value={foamApp.boardFeetPerSet}
+                                      readOnly
+                                      className="w-full border border-gray-300 p-2 rounded-lg bg-gray-100 text-gray-600"
                                     />
                                   </div>
                                   <div>
