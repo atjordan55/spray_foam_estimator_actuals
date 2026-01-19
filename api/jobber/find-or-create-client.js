@@ -80,6 +80,7 @@ module.exports = async function handler(req, res) {
     const input = {
       firstName,
       lastName,
+      sourceAttribution: null,
     };
     
     if (email) {
