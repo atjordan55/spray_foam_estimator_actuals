@@ -398,6 +398,11 @@ export default function SprayFoamEstimator() {
     ? totalMonthlyOverhead / (1 - businessSettings.targetNetMargin / 100) 
     : 0;
 
+  // Per-job overhead allocation based on labor hours
+  const estimatedJobOverhead = overheadPerHour * globalInputs.laborHours;
+  const actualLaborHoursForOverhead = actuals.actualLaborHours !== null ? actuals.actualLaborHours : globalInputs.laborHours;
+  const actualJobOverhead = overheadPerHour * actualLaborHoursForOverhead;
+
   const updateArea = (index, key, value) => {
     const updated = [...sprayAreas];
     if (key === "name" || key === "areaType" || key === "roofPitch" || key === "applyPitchToManualArea") {
@@ -979,6 +984,159 @@ export default function SprayFoamEstimator() {
             </div>
           </div>
         )}
+
+        {/* Business Settings (Collapsible) */}
+        <div className="mb-6 bg-white p-4 md:p-6 rounded-lg shadow-sm no-print">
+          <button
+            onClick={() => setShowBusinessSettings(!showBusinessSettings)}
+            className="w-full flex justify-between items-center text-xl font-bold text-gray-900"
+          >
+            <span>Business Settings</span>
+            <span className="text-gray-500">{showBusinessSettings ? '−' : '+'}</span>
+          </button>
+          
+          {showBusinessSettings && (
+            <div className="mt-4">
+              <p className="text-sm text-gray-600 mb-4">Configure your monthly overhead costs to track true job profitability.</p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Salaries ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={businessSettings.salaries || ""}
+                    onChange={(e) => handleBusinessSettingChange('salaries', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Rent ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={businessSettings.rent || ""}
+                    onChange={(e) => handleBusinessSettingChange('rent', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Rig Lease ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={businessSettings.rigLease || ""}
+                    onChange={(e) => handleBusinessSettingChange('rigLease', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Truck Lease ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={businessSettings.truckLease || ""}
+                    onChange={(e) => handleBusinessSettingChange('truckLease', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Insurance ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={businessSettings.insurance || ""}
+                    onChange={(e) => handleBusinessSettingChange('insurance', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Marketing ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={businessSettings.marketing || ""}
+                    onChange={(e) => handleBusinessSettingChange('marketing', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Software ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={businessSettings.software || ""}
+                    onChange={(e) => handleBusinessSettingChange('software', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Other Overhead ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={businessSettings.otherOverhead || ""}
+                    onChange={(e) => handleBusinessSettingChange('otherOverhead', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Expected Monthly Billable Hours</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={businessSettings.expectedMonthlyHours || ""}
+                    onChange={(e) => handleBusinessSettingChange('expectedMonthlyHours', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Net Margin (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="99"
+                    step="1"
+                    value={businessSettings.targetNetMargin || ""}
+                    onChange={(e) => handleBusinessSettingChange('targetNetMargin', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              
+              {/* Calculated Outputs */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-gray-800 mb-3">Overhead Summary</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Total Monthly Overhead:</span>
+                    <p className="text-lg font-bold text-gray-900">${totalMonthlyOverhead.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Overhead Per Hour:</span>
+                    <p className="text-lg font-bold text-gray-900">${overheadPerHour.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Break-Even Revenue (at {businessSettings.targetNetMargin}% margin):</span>
+                    <p className="text-lg font-bold text-gray-900">${breakEvenRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Customer Information */}
         <div className="mb-6 bg-white p-4 md:p-6 rounded-lg shadow-sm">
@@ -1691,6 +1849,30 @@ export default function SprayFoamEstimator() {
                           {(actualMargin - profitMargin).toFixed(1)}%
                         </td>
                       </tr>
+                      {totalMonthlyOverhead > 0 && (
+                        <>
+                          <tr className="border-t-2 border-gray-300">
+                            <td className="py-2 pr-2 text-gray-600">Job Overhead Allocation</td>
+                            <td className="py-2 px-2 text-right">${estimatedJobOverhead.toFixed(2)}</td>
+                            <td className="py-2 px-2 text-right">${actualJobOverhead.toFixed(2)}</td>
+                            <td className={`py-2 pl-2 text-right ${actualJobOverhead - estimatedJobOverhead > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                              ${(actualJobOverhead - estimatedJobOverhead).toFixed(2)}
+                            </td>
+                          </tr>
+                          <tr className="font-bold bg-yellow-50">
+                            <td className="py-2 pr-2">True Net Profit</td>
+                            <td className={`py-2 px-2 text-right ${(estimatedProfit - estimatedJobOverhead) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                              ${(estimatedProfit - estimatedJobOverhead).toFixed(2)}
+                            </td>
+                            <td className={`py-2 px-2 text-right ${(actualProfit - actualJobOverhead) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                              ${(actualProfit - actualJobOverhead).toFixed(2)}
+                            </td>
+                            <td className={`py-2 pl-2 text-right ${(actualProfit - actualJobOverhead) - (estimatedProfit - estimatedJobOverhead) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              ${((actualProfit - actualJobOverhead) - (estimatedProfit - estimatedJobOverhead)).toFixed(2)}
+                            </td>
+                          </tr>
+                        </>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1765,6 +1947,19 @@ export default function SprayFoamEstimator() {
                       <span>Final Estimated Profit:</span>
                       <span>${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</span>
                     </div>
+                    {totalMonthlyOverhead > 0 && (
+                      <>
+                        <hr className="my-3 border-gray-400" />
+                        <div className="flex justify-between py-1">
+                          <span className="text-gray-600">Job Overhead Allocation ({globalInputs.laborHours}h × ${overheadPerHour.toFixed(2)}):</span>
+                          <span>${estimatedJobOverhead.toFixed(2)}</span>
+                        </div>
+                        <div className={`flex justify-between py-1 font-bold text-lg ${(estimatedProfit - estimatedJobOverhead) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          <span>True Net Profit:</span>
+                          <span>${(estimatedProfit - estimatedJobOverhead).toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1805,6 +2000,19 @@ export default function SprayFoamEstimator() {
                       <span>Final Actual Profit:</span>
                       <span>${actualProfit.toFixed(2)} ({actualMargin.toFixed(1)}%)</span>
                     </div>
+                    {totalMonthlyOverhead > 0 && (
+                      <>
+                        <hr className="my-3 border-gray-400" />
+                        <div className="flex justify-between py-1">
+                          <span className="text-gray-600">Job Overhead Allocation ({actualLaborHoursForOverhead}h × ${overheadPerHour.toFixed(2)}):</span>
+                          <span>${actualJobOverhead.toFixed(2)}</span>
+                        </div>
+                        <div className={`flex justify-between py-1 font-bold text-lg ${(actualProfit - actualJobOverhead) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          <span>True Net Profit:</span>
+                          <span>${(actualProfit - actualJobOverhead).toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </>
