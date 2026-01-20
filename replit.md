@@ -111,3 +111,12 @@ Preferred communication style: Simple, everyday language.
 ### External Services
 - **Jobber API**: GraphQL API (version 2025-04-16) for quote and client management
 - **PostgreSQL**: Database for OAuth token storage
+- **Deployment**: Vercel at https://spray-foam-estimator.vercel.app
+- **Jobber Redirect URI**: https://spray-foam-estimator.vercel.app/api/auth/jobber/callback
+
+### Recent Jobber Integration Updates
+- **Improved Client Matching**: Searches by exact email match first, then normalized phone number - no more fuzzy name matching
+- **Lead Source**: Set to blank when creating new clients (not auto-filled with app name)
+- **Labor Line Item**: Includes base labor, markup, fuel cost, waste disposal, and equipment rental
+- **Price Consistency**: $/Sq Ft rounded to 2 decimals, total calculated from rounded value to match Jobber quotes
+- **Default Closed Cell Markup**: 60.59% (results in $2.38/sq ft at 2" thickness)
