@@ -76,6 +76,17 @@ Preferred communication style: Simple, everyday language.
 - Made editable (requires Actual Labor Rate to be filled first)
 - Two-way sync with Labor Markup percentage
 
+### Business Settings & Overhead Tracking
+- **Collapsible Business Settings Panel**: Located above Customer Information
+- **Monthly Overhead Costs**: Track salaries, rent, rig lease, truck lease, insurance, marketing, software, and other overhead
+- **Expected Monthly Billable Hours**: Used to calculate overhead per hour rate
+- **Target Net Margin**: Used to calculate break-even monthly revenue
+- **Overhead Summary Display**: Shows total monthly overhead, overhead per hour, and break-even revenue
+- **Per-Job Overhead Allocation**: Calculated as Overhead Per Hour × Job Labor Hours
+- **True Net Profit**: Final Profit minus Job Overhead Allocation
+- **Comparison View Integration**: Overhead and True Net Profit shown in side-by-side comparison
+- **localStorage Persistence**: Business settings saved in browser localStorage
+
 ## External Dependencies
 
 ### Core Dependencies
