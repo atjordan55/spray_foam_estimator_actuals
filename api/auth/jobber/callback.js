@@ -1,7 +1,7 @@
 const { neon } = require('@neondatabase/serverless');
 
 const JOBBER_TOKEN_URL = 'https://api.getjobber.com/api/oauth/token';
-const BASE_URL = 'https://spray-form-estimator.vercel.app';
+const BASE_URL = 'https://spray-foam-estimator.vercel.app';
 const REDIRECT_URI = `${BASE_URL}/api/auth/jobber/callback`;
 
 function getDb() {

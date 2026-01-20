@@ -8,7 +8,7 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'JOBBER_CLIENT_ID environment variable not set' });
     }
     
-    const redirectUri = 'https://spray-form-estimator.vercel.app/api/auth/jobber/callback';
+    const redirectUri = 'https://spray-foam-estimator.vercel.app/api/auth/jobber/callback';
     const scopes = 'read_clients write_clients read_quotes write_quotes';
     
     const authUrl = `${JOBBER_AUTH_URL}?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes)}`;
