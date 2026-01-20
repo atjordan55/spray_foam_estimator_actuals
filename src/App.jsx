@@ -108,6 +108,19 @@ const getDefaultState = () => ({
   }
 });
 
+const getDefaultBusinessSettings = () => ({
+  salaries: 0,
+  rent: 0,
+  rigLease: 0,
+  truckLease: 0,
+  insurance: 0,
+  marketing: 0,
+  software: 0,
+  otherOverhead: 0,
+  expectedMonthlyHours: 160,
+  targetNetMargin: 20
+});
+
 export default function SprayFoamEstimator() {
   const defaultState = getDefaultState();
   
@@ -139,6 +152,8 @@ export default function SprayFoamEstimator() {
   const [jobberLoading, setJobberLoading] = useState(false);
   const [jobberError, setJobberError] = useState("");
   const [jobberSuccess, setJobberSuccess] = useState("");
+  const [businessSettings, setBusinessSettings] = useState(getDefaultBusinessSettings());
+  const [showBusinessSettings, setShowBusinessSettings] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -147,6 +162,15 @@ export default function SprayFoamEstimator() {
         setRecentEstimates(JSON.parse(saved));
       } catch (e) {
         console.error('Failed to load recent estimates');
+      }
+    }
+    
+    const savedBusiness = localStorage.getItem('businessSettings');
+    if (savedBusiness) {
+      try {
+        setBusinessSettings({ ...getDefaultBusinessSettings(), ...JSON.parse(savedBusiness) });
+      } catch (e) {
+        console.error('Failed to load business settings');
       }
     }
     
@@ -164,6 +188,10 @@ export default function SprayFoamEstimator() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('businessSettings', JSON.stringify(businessSettings));
+  }, [businessSettings]);
   
   const checkJobberStatus = async () => {
     try {
@@ -345,6 +373,30 @@ export default function SprayFoamEstimator() {
   const handleCustomerInfoChange = (key, value) => {
     setCustomerInfo({ ...customerInfo, [key]: value });
   };
+
+  const handleBusinessSettingChange = (key, value) => {
+    const parsed = parseFloat(value);
+    setBusinessSettings({ ...businessSettings, [key]: isNaN(parsed) ? 0 : Math.max(0, parsed) });
+  };
+
+  // Business overhead calculations
+  const totalMonthlyOverhead = 
+    businessSettings.salaries + 
+    businessSettings.rent + 
+    businessSettings.rigLease + 
+    businessSettings.truckLease + 
+    businessSettings.insurance + 
+    businessSettings.marketing + 
+    businessSettings.software + 
+    businessSettings.otherOverhead;
+
+  const overheadPerHour = businessSettings.expectedMonthlyHours > 0 
+    ? totalMonthlyOverhead / businessSettings.expectedMonthlyHours 
+    : 0;
+
+  const breakEvenRevenue = businessSettings.targetNetMargin < 100 
+    ? totalMonthlyOverhead / (1 - businessSettings.targetNetMargin / 100) 
+    : 0;
 
   const updateArea = (index, key, value) => {
     const updated = [...sprayAreas];
