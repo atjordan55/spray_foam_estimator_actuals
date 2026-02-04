@@ -139,6 +139,12 @@ export default function SprayFoamEstimator() {
   const [jobberLoading, setJobberLoading] = useState(false);
   const [jobberError, setJobberError] = useState("");
   const [jobberSuccess, setJobberSuccess] = useState("");
+  const [discountDollar, setDiscountDollar] = useState(0);
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [discountDollarInput, setDiscountDollarInput] = useState("");
+  const [discountPercentInput, setDiscountPercentInput] = useState("");
+  const [discountDollarFocused, setDiscountDollarFocused] = useState(false);
+  const [discountPercentFocused, setDiscountPercentFocused] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -337,6 +343,50 @@ export default function SprayFoamEstimator() {
     }
   };
 
+  const handleDiscountDollarChange = (value, totalJobCostValue) => {
+    const dollarValue = parseFloat(value) || 0;
+    const validDollar = Math.max(0, Math.min(dollarValue, totalJobCostValue));
+    setDiscountDollar(validDollar);
+    setDiscountDollarInput(value);
+    if (totalJobCostValue > 0) {
+      const percentValue = (validDollar / totalJobCostValue) * 100;
+      setDiscountPercent(percentValue);
+      setDiscountPercentInput(percentValue.toFixed(2));
+    }
+  };
+
+  const handleDiscountPercentChange = (value, totalJobCostValue) => {
+    const percentValue = parseFloat(value) || 0;
+    const validPercent = Math.max(0, Math.min(percentValue, 100));
+    setDiscountPercent(validPercent);
+    setDiscountPercentInput(value);
+    const dollarValue = (validPercent / 100) * totalJobCostValue;
+    setDiscountDollar(dollarValue);
+    setDiscountDollarInput(dollarValue.toFixed(2));
+  };
+
+  const handleDiscountDollarBlur = (totalJobCostValue) => {
+    setDiscountDollarFocused(false);
+    const validDollar = Math.max(0, Math.min(discountDollar, totalJobCostValue));
+    setDiscountDollar(validDollar);
+    setDiscountDollarInput(validDollar.toFixed(2));
+    if (totalJobCostValue > 0) {
+      const percentValue = (validDollar / totalJobCostValue) * 100;
+      setDiscountPercent(percentValue);
+      setDiscountPercentInput(percentValue.toFixed(2));
+    }
+  };
+
+  const handleDiscountPercentBlur = (totalJobCostValue) => {
+    setDiscountPercentFocused(false);
+    const validPercent = Math.max(0, Math.min(discountPercent, 100));
+    setDiscountPercent(validPercent);
+    setDiscountPercentInput(validPercent.toFixed(2));
+    const dollarValue = (validPercent / 100) * totalJobCostValue;
+    setDiscountDollar(dollarValue);
+    setDiscountDollarInput(dollarValue.toFixed(2));
+  };
+
   const handleActualsChange = (key, value) => {
     const parsed = parseFloat(value);
     setActuals({ ...actuals, [key]: isNaN(parsed) ? null : Math.max(0, parsed) });
@@ -499,6 +549,10 @@ export default function SprayFoamEstimator() {
       setMaterialPriceFocused({});
       setActualsInputs({});
       setActualsFocused({});
+      setDiscountDollar(0);
+      setDiscountPercent(0);
+      setDiscountDollarInput("");
+      setDiscountPercentInput("");
     }
   };
 
@@ -744,7 +798,8 @@ export default function SprayFoamEstimator() {
   const baseLaborCost = globalInputs.laborHours * globalInputs.manualLaborRate;
   const totalBaseCost = baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
-  const customerCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
+  const totalJobCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
+  const customerCost = totalJobCost - discountDollar;
   
   const netProfitBeforeCommission = customerCost - totalBaseCost;
   const profitMarginBeforeCommission = customerCost > 0 ? (netProfitBeforeCommission / customerCost) * 100 : 0;
@@ -1074,6 +1129,52 @@ export default function SprayFoamEstimator() {
                     </div>
                   );
                 })}
+              </div>
+              
+              {/* Discount Section */}
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Discount</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Discount ($)
+                      <Tooltip text="Dollar amount to discount from the total job cost" />
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={discountDollarFocused ? discountDollarInput : (discountDollar === 0 ? "" : discountDollar.toFixed(2))}
+                      onChange={(e) => handleDiscountDollarChange(e.target.value, totalJobCost)}
+                      onFocus={() => {
+                        setDiscountDollarFocused(true);
+                        setDiscountDollarInput(discountDollar === 0 ? "" : discountDollar.toFixed(2));
+                      }}
+                      onBlur={() => handleDiscountDollarBlur(totalJobCost)}
+                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Discount (%)
+                      <Tooltip text="Percentage to discount from the total job cost" />
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={discountPercentFocused ? discountPercentInput : (discountPercent === 0 ? "" : discountPercent.toFixed(2))}
+                      onChange={(e) => handleDiscountPercentChange(e.target.value, totalJobCost)}
+                      onFocus={() => {
+                        setDiscountPercentFocused(true);
+                        setDiscountPercentInput(discountPercent === 0 ? "" : discountPercent.toFixed(2));
+                      }}
+                      onBlur={() => handleDiscountPercentBlur(totalJobCost)}
+                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1693,6 +1794,16 @@ export default function SprayFoamEstimator() {
                     </div>
                     <hr className="my-3" />
                     <div className="flex justify-between py-1 font-bold text-lg">
+                      <span>Total Job Cost:</span>
+                      <span>${totalJobCost.toFixed(2)}</span>
+                    </div>
+                    {discountDollar > 0 && (
+                      <div className="flex justify-between py-1 text-green-600">
+                        <span>Discount ({discountPercent.toFixed(1)}%):</span>
+                        <span>-${discountDollar.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-1 font-bold text-lg">
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
@@ -1732,6 +1843,16 @@ export default function SprayFoamEstimator() {
                       <span>Actual Base Job Cost:</span>
                       <span>${actualBaseCost.toFixed(2)}</span>
                     </div>
+                    <div className="flex justify-between py-1 font-bold text-lg">
+                      <span>Total Job Cost:</span>
+                      <span>${totalJobCost.toFixed(2)}</span>
+                    </div>
+                    {discountDollar > 0 && (
+                      <div className="flex justify-between py-1 text-green-600">
+                        <span>Discount ({discountPercent.toFixed(1)}%):</span>
+                        <span>-${discountDollar.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between py-1 font-bold text-lg">
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>

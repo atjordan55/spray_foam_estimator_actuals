@@ -76,6 +76,15 @@ Preferred communication style: Simple, everyday language.
 - Made editable (requires Actual Labor Rate to be filled first)
 - Two-way sync with Labor Markup percentage
 
+### Discount Feature
+- **Discount ($)**: Dollar amount input for discounting the total job cost
+- **Discount (%)**: Percentage input that syncs bidirectionally with dollar amount
+- **Total Job Cost**: Displayed in Estimate Summary before discount
+- **Customer Charge**: Calculated as Total Job Cost minus discount
+- **Visual Display**: Discount shown in green when applied
+- **Profit Calculations**: All profit margins and commissions calculated from discounted Customer Charge
+- **Reset Integration**: Discount values cleared when resetting estimate
+
 ## External Dependencies
 
 ### Core Dependencies
