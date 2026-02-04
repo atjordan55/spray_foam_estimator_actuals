@@ -108,19 +108,6 @@ const getDefaultState = () => ({
   }
 });
 
-const getDefaultBusinessSettings = () => ({
-  salaries: 0,
-  rent: 0,
-  rigLease: 0,
-  truckLease: 0,
-  insurance: 0,
-  marketing: 0,
-  software: 0,
-  otherOverhead: 0,
-  expectedMonthlyHours: 160,
-  targetNetMargin: 20
-});
-
 export default function SprayFoamEstimator() {
   const defaultState = getDefaultState();
   
@@ -152,8 +139,12 @@ export default function SprayFoamEstimator() {
   const [jobberLoading, setJobberLoading] = useState(false);
   const [jobberError, setJobberError] = useState("");
   const [jobberSuccess, setJobberSuccess] = useState("");
-  const [businessSettings, setBusinessSettings] = useState(getDefaultBusinessSettings());
-  const [showBusinessSettings, setShowBusinessSettings] = useState(false);
+  const [discountDollar, setDiscountDollar] = useState(0);
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [discountDollarInput, setDiscountDollarInput] = useState("");
+  const [discountPercentInput, setDiscountPercentInput] = useState("");
+  const [discountDollarFocused, setDiscountDollarFocused] = useState(false);
+  const [discountPercentFocused, setDiscountPercentFocused] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -162,15 +153,6 @@ export default function SprayFoamEstimator() {
         setRecentEstimates(JSON.parse(saved));
       } catch (e) {
         console.error('Failed to load recent estimates');
-      }
-    }
-    
-    const savedBusiness = localStorage.getItem('businessSettings');
-    if (savedBusiness) {
-      try {
-        setBusinessSettings({ ...getDefaultBusinessSettings(), ...JSON.parse(savedBusiness) });
-      } catch (e) {
-        console.error('Failed to load business settings');
       }
     }
     
@@ -188,10 +170,6 @@ export default function SprayFoamEstimator() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem('businessSettings', JSON.stringify(businessSettings));
-  }, [businessSettings]);
   
   const checkJobberStatus = async () => {
     try {
@@ -365,6 +343,50 @@ export default function SprayFoamEstimator() {
     }
   };
 
+  const handleDiscountDollarChange = (value, totalJobCostValue) => {
+    const dollarValue = parseFloat(value) || 0;
+    const validDollar = Math.max(0, Math.min(dollarValue, totalJobCostValue));
+    setDiscountDollar(validDollar);
+    setDiscountDollarInput(value);
+    if (totalJobCostValue > 0) {
+      const percentValue = (validDollar / totalJobCostValue) * 100;
+      setDiscountPercent(percentValue);
+      setDiscountPercentInput(percentValue.toFixed(2));
+    }
+  };
+
+  const handleDiscountPercentChange = (value, totalJobCostValue) => {
+    const percentValue = parseFloat(value) || 0;
+    const validPercent = Math.max(0, Math.min(percentValue, 100));
+    setDiscountPercent(validPercent);
+    setDiscountPercentInput(value);
+    const dollarValue = (validPercent / 100) * totalJobCostValue;
+    setDiscountDollar(dollarValue);
+    setDiscountDollarInput(dollarValue.toFixed(2));
+  };
+
+  const handleDiscountDollarBlur = (totalJobCostValue) => {
+    setDiscountDollarFocused(false);
+    const validDollar = Math.max(0, Math.min(discountDollar, totalJobCostValue));
+    setDiscountDollar(validDollar);
+    setDiscountDollarInput(validDollar.toFixed(2));
+    if (totalJobCostValue > 0) {
+      const percentValue = (validDollar / totalJobCostValue) * 100;
+      setDiscountPercent(percentValue);
+      setDiscountPercentInput(percentValue.toFixed(2));
+    }
+  };
+
+  const handleDiscountPercentBlur = (totalJobCostValue) => {
+    setDiscountPercentFocused(false);
+    const validPercent = Math.max(0, Math.min(discountPercent, 100));
+    setDiscountPercent(validPercent);
+    setDiscountPercentInput(validPercent.toFixed(2));
+    const dollarValue = (validPercent / 100) * totalJobCostValue;
+    setDiscountDollar(dollarValue);
+    setDiscountDollarInput(dollarValue.toFixed(2));
+  };
+
   const handleActualsChange = (key, value) => {
     const parsed = parseFloat(value);
     setActuals({ ...actuals, [key]: isNaN(parsed) ? null : Math.max(0, parsed) });
@@ -373,35 +395,6 @@ export default function SprayFoamEstimator() {
   const handleCustomerInfoChange = (key, value) => {
     setCustomerInfo({ ...customerInfo, [key]: value });
   };
-
-  const handleBusinessSettingChange = (key, value) => {
-    const parsed = parseFloat(value);
-    setBusinessSettings({ ...businessSettings, [key]: isNaN(parsed) ? 0 : Math.max(0, parsed) });
-  };
-
-  // Business overhead calculations
-  const totalMonthlyOverhead = 
-    businessSettings.salaries + 
-    businessSettings.rent + 
-    businessSettings.rigLease + 
-    businessSettings.truckLease + 
-    businessSettings.insurance + 
-    businessSettings.marketing + 
-    businessSettings.software + 
-    businessSettings.otherOverhead;
-
-  const overheadPerHour = businessSettings.expectedMonthlyHours > 0 
-    ? totalMonthlyOverhead / businessSettings.expectedMonthlyHours 
-    : 0;
-
-  const breakEvenRevenue = businessSettings.targetNetMargin < 100 
-    ? totalMonthlyOverhead / (1 - businessSettings.targetNetMargin / 100) 
-    : 0;
-
-  // Per-job overhead allocation based on labor hours
-  const estimatedJobOverhead = overheadPerHour * globalInputs.laborHours;
-  const actualLaborHoursForOverhead = actuals.actualLaborHours !== null ? actuals.actualLaborHours : globalInputs.laborHours;
-  const actualJobOverhead = overheadPerHour * actualLaborHoursForOverhead;
 
   const updateArea = (index, key, value) => {
     const updated = [...sprayAreas];
@@ -556,6 +549,10 @@ export default function SprayFoamEstimator() {
       setMaterialPriceFocused({});
       setActualsInputs({});
       setActualsFocused({});
+      setDiscountDollar(0);
+      setDiscountPercent(0);
+      setDiscountDollarInput("");
+      setDiscountPercentInput("");
     }
   };
 
@@ -801,7 +798,8 @@ export default function SprayFoamEstimator() {
   const baseLaborCost = globalInputs.laborHours * globalInputs.manualLaborRate;
   const totalBaseCost = baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
   const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
-  const customerCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
+  const totalJobCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
+  const customerCost = totalJobCost - discountDollar;
   
   const netProfitBeforeCommission = customerCost - totalBaseCost;
   const profitMarginBeforeCommission = customerCost > 0 ? (netProfitBeforeCommission / customerCost) * 100 : 0;
@@ -985,159 +983,6 @@ export default function SprayFoamEstimator() {
           </div>
         )}
 
-        {/* Business Settings (Collapsible) */}
-        <div className="mb-6 bg-white p-4 md:p-6 rounded-lg shadow-sm no-print">
-          <button
-            onClick={() => setShowBusinessSettings(!showBusinessSettings)}
-            className="w-full flex justify-between items-center text-xl font-bold text-gray-900"
-          >
-            <span>Business Settings</span>
-            <span className="text-gray-500">{showBusinessSettings ? '−' : '+'}</span>
-          </button>
-          
-          {showBusinessSettings && (
-            <div className="mt-4">
-              <p className="text-sm text-gray-600 mb-4">Configure your monthly overhead costs to track true job profitability.</p>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Salaries ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={businessSettings.salaries || ""}
-                    onChange={(e) => handleBusinessSettingChange('salaries', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Rent ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={businessSettings.rent || ""}
-                    onChange={(e) => handleBusinessSettingChange('rent', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Rig Lease ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={businessSettings.rigLease || ""}
-                    onChange={(e) => handleBusinessSettingChange('rigLease', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Truck Lease ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={businessSettings.truckLease || ""}
-                    onChange={(e) => handleBusinessSettingChange('truckLease', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Insurance ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={businessSettings.insurance || ""}
-                    onChange={(e) => handleBusinessSettingChange('insurance', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Marketing ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={businessSettings.marketing || ""}
-                    onChange={(e) => handleBusinessSettingChange('marketing', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Software ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={businessSettings.software || ""}
-                    onChange={(e) => handleBusinessSettingChange('software', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Other Overhead ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={businessSettings.otherOverhead || ""}
-                    onChange={(e) => handleBusinessSettingChange('otherOverhead', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Expected Monthly Billable Hours</label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={businessSettings.expectedMonthlyHours || ""}
-                    onChange={(e) => handleBusinessSettingChange('expectedMonthlyHours', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Net Margin (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="99"
-                    step="1"
-                    value={businessSettings.targetNetMargin || ""}
-                    onChange={(e) => handleBusinessSettingChange('targetNetMargin', e.target.value)}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-              
-              {/* Calculated Outputs */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-gray-800 mb-3">Overhead Summary</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Total Monthly Overhead:</span>
-                    <p className="text-lg font-bold text-gray-900">${totalMonthlyOverhead.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Overhead Per Hour:</span>
-                    <p className="text-lg font-bold text-gray-900">${overheadPerHour.toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Break-Even Revenue (at {businessSettings.targetNetMargin}% margin):</span>
-                    <p className="text-lg font-bold text-gray-900">${breakEvenRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Customer Information */}
         <div className="mb-6 bg-white p-4 md:p-6 rounded-lg shadow-sm">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Customer Information</h2>
@@ -1284,6 +1129,52 @@ export default function SprayFoamEstimator() {
                     </div>
                   );
                 })}
+              </div>
+              
+              {/* Discount Section */}
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Discount</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Discount ($)
+                      <Tooltip text="Dollar amount to discount from the total job cost" />
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={discountDollarFocused ? discountDollarInput : (discountDollar === 0 ? "" : discountDollar.toFixed(2))}
+                      onChange={(e) => handleDiscountDollarChange(e.target.value, totalJobCost)}
+                      onFocus={() => {
+                        setDiscountDollarFocused(true);
+                        setDiscountDollarInput(discountDollar === 0 ? "" : discountDollar.toFixed(2));
+                      }}
+                      onBlur={() => handleDiscountDollarBlur(totalJobCost)}
+                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Discount (%)
+                      <Tooltip text="Percentage to discount from the total job cost" />
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={discountPercentFocused ? discountPercentInput : (discountPercent === 0 ? "" : discountPercent.toFixed(2))}
+                      onChange={(e) => handleDiscountPercentChange(e.target.value, totalJobCost)}
+                      onFocus={() => {
+                        setDiscountPercentFocused(true);
+                        setDiscountPercentInput(discountPercent === 0 ? "" : discountPercent.toFixed(2));
+                      }}
+                      onBlur={() => handleDiscountPercentBlur(totalJobCost)}
+                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1849,30 +1740,6 @@ export default function SprayFoamEstimator() {
                           {(actualMargin - profitMargin).toFixed(1)}%
                         </td>
                       </tr>
-                      {totalMonthlyOverhead > 0 && (
-                        <>
-                          <tr className="border-t-2 border-gray-300">
-                            <td className="py-2 pr-2 text-gray-600">Job Overhead Allocation</td>
-                            <td className="py-2 px-2 text-right">${estimatedJobOverhead.toFixed(2)}</td>
-                            <td className="py-2 px-2 text-right">${actualJobOverhead.toFixed(2)}</td>
-                            <td className={`py-2 pl-2 text-right ${actualJobOverhead - estimatedJobOverhead > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                              ${(actualJobOverhead - estimatedJobOverhead).toFixed(2)}
-                            </td>
-                          </tr>
-                          <tr className="font-bold bg-yellow-50">
-                            <td className="py-2 pr-2">True Net Profit</td>
-                            <td className={`py-2 px-2 text-right ${(estimatedProfit - estimatedJobOverhead) < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                              ${(estimatedProfit - estimatedJobOverhead).toFixed(2)}
-                            </td>
-                            <td className={`py-2 px-2 text-right ${(actualProfit - actualJobOverhead) < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                              ${(actualProfit - actualJobOverhead).toFixed(2)}
-                            </td>
-                            <td className={`py-2 pl-2 text-right ${(actualProfit - actualJobOverhead) - (estimatedProfit - estimatedJobOverhead) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              ${((actualProfit - actualJobOverhead) - (estimatedProfit - estimatedJobOverhead)).toFixed(2)}
-                            </td>
-                          </tr>
-                        </>
-                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1927,6 +1794,16 @@ export default function SprayFoamEstimator() {
                     </div>
                     <hr className="my-3" />
                     <div className="flex justify-between py-1 font-bold text-lg">
+                      <span>Total Job Cost:</span>
+                      <span>${totalJobCost.toFixed(2)}</span>
+                    </div>
+                    {discountDollar > 0 && (
+                      <div className="flex justify-between py-1 text-green-600">
+                        <span>Discount ({discountPercent.toFixed(1)}%):</span>
+                        <span>-${discountDollar.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-1 font-bold text-lg">
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
@@ -1947,19 +1824,6 @@ export default function SprayFoamEstimator() {
                       <span>Final Estimated Profit:</span>
                       <span>${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</span>
                     </div>
-                    {totalMonthlyOverhead > 0 && (
-                      <>
-                        <hr className="my-3 border-gray-400" />
-                        <div className="flex justify-between py-1">
-                          <span className="text-gray-600">Job Overhead Allocation ({globalInputs.laborHours}h × ${overheadPerHour.toFixed(2)}):</span>
-                          <span>${estimatedJobOverhead.toFixed(2)}</span>
-                        </div>
-                        <div className={`flex justify-between py-1 font-bold text-lg ${(estimatedProfit - estimatedJobOverhead) < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          <span>True Net Profit:</span>
-                          <span>${(estimatedProfit - estimatedJobOverhead).toFixed(2)}</span>
-                        </div>
-                      </>
-                    )}
                   </div>
                 </div>
 
@@ -1979,6 +1843,16 @@ export default function SprayFoamEstimator() {
                       <span>Actual Base Job Cost:</span>
                       <span>${actualBaseCost.toFixed(2)}</span>
                     </div>
+                    <div className="flex justify-between py-1 font-bold text-lg">
+                      <span>Total Job Cost:</span>
+                      <span>${totalJobCost.toFixed(2)}</span>
+                    </div>
+                    {discountDollar > 0 && (
+                      <div className="flex justify-between py-1 text-green-600">
+                        <span>Discount ({discountPercent.toFixed(1)}%):</span>
+                        <span>-${discountDollar.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between py-1 font-bold text-lg">
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
@@ -2000,19 +1874,6 @@ export default function SprayFoamEstimator() {
                       <span>Final Actual Profit:</span>
                       <span>${actualProfit.toFixed(2)} ({actualMargin.toFixed(1)}%)</span>
                     </div>
-                    {totalMonthlyOverhead > 0 && (
-                      <>
-                        <hr className="my-3 border-gray-400" />
-                        <div className="flex justify-between py-1">
-                          <span className="text-gray-600">Job Overhead Allocation ({actualLaborHoursForOverhead}h × ${overheadPerHour.toFixed(2)}):</span>
-                          <span>${actualJobOverhead.toFixed(2)}</span>
-                        </div>
-                        <div className={`flex justify-between py-1 font-bold text-lg ${(actualProfit - actualJobOverhead) < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          <span>True Net Profit:</span>
-                          <span>${(actualProfit - actualJobOverhead).toFixed(2)}</span>
-                        </div>
-                      </>
-                    )}
                   </div>
                 </div>
               </>
