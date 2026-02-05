@@ -79,11 +79,23 @@ Preferred communication style: Simple, everyday language.
 ### Discount Feature
 - **Discount ($)**: Dollar amount input for discounting the total job cost
 - **Discount (%)**: Percentage input that syncs bidirectionally with dollar amount
-- **Total Job Cost**: Displayed in Estimate Summary before discount
-- **Customer Charge**: Calculated as Total Job Cost minus discount
+- **Sales Price**: Displayed in Estimate Summary before discount (renamed from Total Job Cost)
+- **Customer Charge**: Calculated as Sales Price minus discount
 - **Visual Display**: Discount shown in green when applied
 - **Profit Calculations**: All profit margins and commissions calculated from discounted Customer Charge
 - **Reset Integration**: Discount values cleared when resetting estimate
+
+### Actual Results Enhancements
+- **New Input Fields**: Added Actual Fuel Cost, Actual Waste Disposal, Actual Equipment Rental inputs (default to Project Parameters values)
+- **Color-Coded Comparisons**:
+  - Actual Material Cost: Green if lower than estimated, red if higher, black if same
+  - Actual Labor Cost: Green if lower than estimated, red if higher, black if same
+  - Actual Base Job Cost: Bold green if lower, bold red if higher, bold black if same
+- **Complete Output Display**: Actual Results section now includes all outputs from Estimate Summary:
+  - Actual Material Cost, Actual Labor Cost, Actual Fuel Cost, Actual Waste Disposal, Actual Equipment Rental
+  - Actual Base Job Cost, Material Markup, Labor Markup, Sales Price, Discount, Customer Charge
+  - Actual Job Net Profit, Sales Commission, Total Fees, Final Actual Profit
+- **Styling Updates**: Base Material Cost and Base Labor Cost now use non-bold, non-highlighted black text in Estimate Summary
 
 ## External Dependencies
 
