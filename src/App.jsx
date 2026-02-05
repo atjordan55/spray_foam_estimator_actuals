@@ -1912,7 +1912,7 @@ export default function SprayFoamEstimator() {
                       <span>${totalJobCost.toFixed(2)}</span>
                     </div>
                     {discountDollar > 0 && (
-                      <div className="flex justify-between py-1 text-green-600">
+                      <div className="flex justify-between py-1 text-blue-600">
                         <span>Discount ({discountPercent.toFixed(1)}%):</span>
                         <span>-${discountDollar.toFixed(2)}</span>
                       </div>
@@ -1984,7 +1984,7 @@ export default function SprayFoamEstimator() {
                       <span>${totalJobCost.toFixed(2)}</span>
                     </div>
                     {discountDollar > 0 && (
-                      <div className="flex justify-between py-1 text-green-600">
+                      <div className="flex justify-between py-1 text-blue-600">
                         <span>Discount ({discountPercent.toFixed(1)}%):</span>
                         <span>-${discountDollar.toFixed(2)}</span>
                       </div>
