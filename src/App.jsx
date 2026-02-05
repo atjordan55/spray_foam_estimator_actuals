@@ -569,6 +569,8 @@ export default function SprayFoamEstimator() {
       globalInputs, 
       sprayAreas, 
       actuals,
+      discountDollar,
+      discountPercent,
       savedAt: new Date().toISOString()
     };
     const json = JSON.stringify(data, null, 2);
@@ -643,8 +645,13 @@ export default function SprayFoamEstimator() {
     setActuals({
       actualLaborHours: data.actuals?.actualLaborHours ?? null,
       actualOpenGallons: data.actuals?.actualOpenGallons ?? null,
-      actualClosedGallons: data.actuals?.actualClosedGallons ?? null
+      actualClosedGallons: data.actuals?.actualClosedGallons ?? null,
+      actualFuelCost: data.actuals?.actualFuelCost ?? null,
+      actualWasteDisposal: data.actuals?.actualWasteDisposal ?? null,
+      actualEquipmentRental: data.actuals?.actualEquipmentRental ?? null
     });
+    setDiscountDollar(data.discountDollar ?? 0);
+    setDiscountPercent(data.discountPercent ?? 0);
     setActualsConfirmed(false);
     setEstimateNameManuallyEdited(!!data.estimateName);
     setChargedLaborRateError("");
