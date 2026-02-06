@@ -53,7 +53,7 @@ const createFoamApplication = (foamType = "Open") => {
       id: Date.now() + Math.random(),
       foamType: "Closed",
       foamThickness: 2,
-      materialPrice: 2470,
+      materialPrice: 2300,
       materialMarkup: 60.59,
       boardFeetPerSet: 4000
     };
@@ -434,7 +434,7 @@ export default function SprayFoamEstimator() {
         foamApp.boardFeetPerSet = 14000;
       } else if (value === "Closed") {
         foamApp.foamThickness = 2;
-        foamApp.materialPrice = 2470;
+        foamApp.materialPrice = 2300;
         foamApp.materialMarkup = 60.59;
         foamApp.boardFeetPerSet = 4000;
       }
@@ -788,21 +788,28 @@ export default function SprayFoamEstimator() {
   const totalSets = { open: 0, closed: 0 };
   let baseMaterialCost = 0;
   let materialMarkupAmount = 0;
+  let weightedOpenCostPerGallon = 0;
+  let weightedClosedCostPerGallon = 0;
 
   sprayAreas.forEach(area => {
     area.foamApplications.forEach(foamApp => {
-      const { gallons, sets, baseMaterialCost: cost, markupAmount } = calculateFoamApplicationCost(area, foamApp);
+      const { gallons, sets, baseMaterialCost: cost, markupAmount, materialCost } = calculateFoamApplicationCost(area, foamApp);
       if (foamApp.foamType === "Open") {
         totalGallons.open += gallons;
         totalSets.open += sets;
+        weightedOpenCostPerGallon += gallons > 0 ? cost : 0;
       } else {
         totalGallons.closed += gallons;
         totalSets.closed += sets;
+        weightedClosedCostPerGallon += gallons > 0 ? cost : 0;
       }
       baseMaterialCost += cost;
       materialMarkupAmount += markupAmount;
     });
   });
+
+  const openCostPerGallon = totalGallons.open > 0 ? weightedOpenCostPerGallon / totalGallons.open : 0;
+  const closedCostPerGallon = totalGallons.closed > 0 ? weightedClosedCostPerGallon / totalGallons.closed : 0;
 
   const fuelCost = globalInputs.travelDistance * globalInputs.travelRate;
   const baseLaborCost = globalInputs.laborHours * globalInputs.manualLaborRate;
@@ -835,7 +842,7 @@ export default function SprayFoamEstimator() {
   const effectiveActualWasteDisposal = actuals.actualWasteDisposal ?? globalInputs.wasteDisposal;
   const effectiveActualEquipmentRental = actuals.actualEquipmentRental ?? globalInputs.equipmentRental;
 
-  const actualMaterialCost = (effectiveActualOpenGallons / 100) * (1870 * 1.20) + (effectiveActualClosedGallons / 100) * (2470 * 1.20);
+  const actualMaterialCost = effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon;
   const actualLaborCost = effectiveActualLaborHours * globalInputs.manualLaborRate;
   const actualBaseCost = actualMaterialCost + actualLaborCost + effectiveActualFuelCost + effectiveActualWasteDisposal + effectiveActualEquipmentRental;
   const actualCustomerCost = customerCost;
