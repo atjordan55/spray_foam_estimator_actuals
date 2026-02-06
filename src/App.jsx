@@ -53,7 +53,7 @@ const createFoamApplication = (foamType = "Open") => {
       id: Date.now() + Math.random(),
       foamType: "Closed",
       foamThickness: 2,
-      materialPrice: 2470,
+      materialPrice: 2300,
       materialMarkup: 60.59,
       boardFeetPerSet: 4000
     };
@@ -434,7 +434,7 @@ export default function SprayFoamEstimator() {
         foamApp.boardFeetPerSet = 14000;
       } else if (value === "Closed") {
         foamApp.foamThickness = 2;
-        foamApp.materialPrice = 2470;
+        foamApp.materialPrice = 2300;
         foamApp.materialMarkup = 60.59;
         foamApp.boardFeetPerSet = 4000;
       }
