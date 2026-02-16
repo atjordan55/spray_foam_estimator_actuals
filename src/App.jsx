@@ -88,7 +88,7 @@ const getDefaultState = () => ({
     phone: "",
     email: ""
   },
-  engagementDate: "",
+  engagementDate: new Date().toISOString().split('T')[0],
   completionDate: "",
   projectNotes: "",
   globalInputs: {
