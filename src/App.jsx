@@ -302,11 +302,11 @@ export default function SprayFoamEstimator() {
     const gallons = sets * 100;
     const materialCost = foamApp.materialPrice * 1.20;
     const baseMaterialCost = Math.round(sets * materialCost * 100) / 100;
-    const markupAmount = Math.round(baseMaterialCost * (foamApp.materialMarkup / 100) * 100) / 100;
-    
-    const rawTotal = baseMaterialCost + markupAmount;
+    const rawMarkup = baseMaterialCost * (foamApp.materialMarkup / 100);
+    const rawTotal = baseMaterialCost + rawMarkup;
     const pricePerSqFt = sqft > 0 ? Math.round((rawTotal / sqft) * 100) / 100 : 0;
     const totalCost = Math.round(pricePerSqFt * sqft * 100) / 100;
+    const markupAmount = Math.round((totalCost - baseMaterialCost) * 100) / 100;
     
     const rValuePerInch = foamApp.foamType === "Closed" ? 7.2 : 3.8;
     const rValue = rValuePerInch * foamApp.foamThickness;
