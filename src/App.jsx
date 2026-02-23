@@ -2055,6 +2055,12 @@ export default function SprayFoamEstimator() {
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
+                    {depositDollar > 0 && (
+                      <div className="flex justify-between py-1 text-blue-600">
+                        <span>Deposit Due ({depositPercent.toFixed(1)}%):</span>
+                        <span>${depositDollar.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className={`flex justify-between py-1 font-bold ${getJobNetProfitColor(estimatedJobNetProfitMargin)}`}>
                       <span>Estimated Job Net Profit:</span>
                       <span>${estimatedJobNetProfit.toFixed(2)} ({estimatedJobNetProfitMargin.toFixed(1)}%)</span>
@@ -2127,6 +2133,12 @@ export default function SprayFoamEstimator() {
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
+                    {depositDollar > 0 && (
+                      <div className="flex justify-between py-1 text-blue-600">
+                        <span>Deposit Due ({depositPercent.toFixed(1)}%):</span>
+                        <span>${depositDollar.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className={`flex justify-between py-1 font-bold ${getJobNetProfitColor(actualJobNetProfitMargin)}`}>
                       <span>Actual Job Net Profit:</span>
                       <span>${actualJobNetProfit.toFixed(2)} ({actualJobNetProfitMargin.toFixed(1)}%)</span>
