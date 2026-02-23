@@ -518,6 +518,68 @@ app.post('/api/jobber/create-quote', async (req, res) => {
   }
 });
 
+app.get('/api/admin/settings', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT settings FROM admin_settings WHERE id = 1');
+    if (result.rows.length === 0) {
+      return res.json({ settings: null });
+    }
+    const settings = { ...result.rows[0].settings };
+    delete settings.adminPassword;
+    res.json({ settings });
+  } catch (err) {
+    console.error('Get admin settings error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/verify-password', async (req, res) => {
+  try {
+    const { password } = req.body;
+    const result = await pool.query('SELECT settings FROM admin_settings WHERE id = 1');
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'No settings configured' });
+    }
+    const settings = result.rows[0].settings;
+    if (settings.adminPassword === password) {
+      res.json({ verified: true });
+    } else {
+      res.status(401).json({ error: 'Invalid password' });
+    }
+  } catch (err) {
+    console.error('Verify password error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/settings', async (req, res) => {
+  try {
+    const { password, settings } = req.body;
+    const current = await pool.query('SELECT settings FROM admin_settings WHERE id = 1');
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'No settings found' });
+    }
+    if (current.rows[0].settings.adminPassword !== password) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    const updatedSettings = { ...settings, adminPassword: current.rows[0].settings.adminPassword };
+    if (settings.newPassword) {
+      updatedSettings.adminPassword = settings.newPassword;
+      delete updatedSettings.newPassword;
+    }
+    await pool.query(
+      'UPDATE admin_settings SET settings = $1, updated_at = NOW() WHERE id = 1',
+      [JSON.stringify(updatedSettings)]
+    );
+    const responseSettings = { ...updatedSettings };
+    delete responseSettings.adminPassword;
+    res.json({ settings: responseSettings });
+  } catch (err) {
+    console.error('Update admin settings error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'build')));
 
 app.get('/{*splat}', (req, res) => {

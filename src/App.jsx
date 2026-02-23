@@ -47,24 +47,26 @@ const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, clo
   </div>
 );
 
-const createFoamApplication = (foamType = "Open") => {
+const createFoamApplication = (foamType = "Open", settings = null) => {
   if (foamType === "Closed") {
+    const cc = settings?.closedCell;
     return {
       id: Date.now() + Math.random(),
       foamType: "Closed",
-      foamThickness: 2,
-      materialPrice: 2300,
-      materialMarkup: 66.67,
-      boardFeetPerSet: 4000
+      foamThickness: cc?.foamThickness ?? 2,
+      materialPrice: cc?.materialPrice ?? 2300,
+      materialMarkup: cc?.materialMarkup ?? 66.67,
+      boardFeetPerSet: cc?.boardFeetPerSet ?? 4000
     };
   }
+  const oc = settings?.openCell;
   return {
     id: Date.now() + Math.random(),
     foamType: "Open",
-    foamThickness: 6,
-    materialPrice: 1870,
-    materialMarkup: 76.77,
-    boardFeetPerSet: 14000
+    foamThickness: oc?.foamThickness ?? 6,
+    materialPrice: oc?.materialPrice ?? 1870,
+    materialMarkup: oc?.materialMarkup ?? 76.77,
+    boardFeetPerSet: oc?.boardFeetPerSet ?? 14000
   };
 };
 
@@ -111,9 +113,10 @@ const getDefaultState = () => ({
   }
 });
 
-export default function SprayFoamEstimator() {
+export default function SprayFoamEstimator({ onAdmin }) {
   const defaultState = getDefaultState();
   
+  const [adminSettings, setAdminSettings] = useState(null);
   const [estimateName, setEstimateName] = useState(defaultState.estimateName);
   const [customerInfo, setCustomerInfo] = useState(defaultState.customerInfo);
   const [engagementDate, setEngagementDate] = useState(defaultState.engagementDate);
@@ -166,6 +169,7 @@ export default function SprayFoamEstimator() {
     }
     
     checkJobberStatus();
+    loadAdminSettings();
     
     const params = new URLSearchParams(window.location.search);
     if (params.get('jobber_connected') === 'true') {
@@ -179,6 +183,28 @@ export default function SprayFoamEstimator() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+
+  const loadAdminSettings = async () => {
+    try {
+      const res = await fetch('/api/admin/settings');
+      const data = await res.json();
+      if (data.settings) {
+        setAdminSettings(data.settings);
+        const s = data.settings;
+        setGlobalInputs(prev => ({
+          ...prev,
+          manualLaborRate: s.labor?.laborRate ?? prev.manualLaborRate,
+          laborMarkup: s.labor?.laborMarkup ?? prev.laborMarkup,
+          travelDistance: s.project?.travelDistance ?? prev.travelDistance,
+          travelRate: s.project?.travelRate ?? prev.travelRate,
+          wasteDisposal: s.project?.wasteDisposal ?? prev.wasteDisposal,
+          equipmentRental: s.project?.equipmentRental ?? prev.equipmentRental,
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to load admin settings:', err);
+    }
+  };
   
   const checkJobberStatus = async () => {
     try {
@@ -476,15 +502,17 @@ export default function SprayFoamEstimator() {
     if (key === "foamType") {
       foamApp.foamType = value;
       if (value === "Open") {
-        foamApp.foamThickness = 6;
-        foamApp.materialPrice = 1870;
-        foamApp.materialMarkup = 76.77;
-        foamApp.boardFeetPerSet = 14000;
+        const oc = adminSettings?.openCell;
+        foamApp.foamThickness = oc?.foamThickness ?? 6;
+        foamApp.materialPrice = oc?.materialPrice ?? 1870;
+        foamApp.materialMarkup = oc?.materialMarkup ?? 76.77;
+        foamApp.boardFeetPerSet = oc?.boardFeetPerSet ?? 14000;
       } else if (value === "Closed") {
-        foamApp.foamThickness = 2;
-        foamApp.materialPrice = 2300;
-        foamApp.materialMarkup = 66.67;
-        foamApp.boardFeetPerSet = 4000;
+        const cc = adminSettings?.closedCell;
+        foamApp.foamThickness = cc?.foamThickness ?? 2;
+        foamApp.materialPrice = cc?.materialPrice ?? 2300;
+        foamApp.materialMarkup = cc?.materialMarkup ?? 66.67;
+        foamApp.boardFeetPerSet = cc?.boardFeetPerSet ?? 4000;
       }
     } else {
       const parsed = parseFloat(value);
@@ -495,7 +523,7 @@ export default function SprayFoamEstimator() {
 
   const addFoamApplication = (areaIndex, foamType = "Open") => {
     const updated = [...sprayAreas];
-    updated[areaIndex].foamApplications.push(createFoamApplication(foamType));
+    updated[areaIndex].foamApplications.push(createFoamApplication(foamType, adminSettings));
     setSprayAreas(updated);
   };
 
@@ -583,8 +611,20 @@ export default function SprayFoamEstimator() {
       setEngagementDate(defaults.engagementDate);
       setCompletionDate(defaults.completionDate);
       setProjectNotes(defaults.projectNotes);
-      setGlobalInputs(defaults.globalInputs);
-      setSprayAreas(defaults.sprayAreas);
+      const s = adminSettings;
+      setGlobalInputs({
+        ...defaults.globalInputs,
+        manualLaborRate: s?.labor?.laborRate ?? defaults.globalInputs.manualLaborRate,
+        laborMarkup: s?.labor?.laborMarkup ?? defaults.globalInputs.laborMarkup,
+        travelDistance: s?.project?.travelDistance ?? defaults.globalInputs.travelDistance,
+        travelRate: s?.project?.travelRate ?? defaults.globalInputs.travelRate,
+        wasteDisposal: s?.project?.wasteDisposal ?? defaults.globalInputs.wasteDisposal,
+        equipmentRental: s?.project?.equipmentRental ?? defaults.globalInputs.equipmentRental,
+      });
+      setSprayAreas([{
+        ...createArea("Area 1"),
+        foamApplications: [createFoamApplication("Open", adminSettings)]
+      }]);
       setActuals(defaults.actuals);
       setActualsConfirmed(false);
       setEstimateNameManuallyEdited(false);
@@ -894,10 +934,15 @@ export default function SprayFoamEstimator() {
   const profitMarginBeforeCommission = customerCost > 0 ? (netProfitBeforeCommission / customerCost) * 100 : 0;
   
   const calculateSalesCommission = (netProfit, margin) => {
-    if (margin >= 35) {
-      return netProfit * 0.12;
-    } else if (margin >= 30 && margin < 35) {
-      return netProfit * 0.10;
+    const tiers = adminSettings?.commission || {};
+    const tier2Min = tiers.tier2Threshold ?? 35;
+    const tier2Rate = (tiers.tier2Rate ?? 12) / 100;
+    const tier1Min = tiers.tier1Threshold ?? 30;
+    const tier1Rate = (tiers.tier1Rate ?? 10) / 100;
+    if (margin >= tier2Min) {
+      return netProfit * tier2Rate;
+    } else if (margin >= tier1Min && margin < tier2Min) {
+      return netProfit * tier1Rate;
     }
     return 0;
   };
@@ -943,8 +988,10 @@ export default function SprayFoamEstimator() {
   const actualBaseCostColor = getComparisonColor(actualBaseCost, totalBaseCost);
   
   const getJobNetProfitColor = (margin) => {
-    if (margin >= 35) return "text-green-600";
-    if (margin >= 30) return "text-yellow-600";
+    const tier2Min = adminSettings?.commission?.tier2Threshold ?? 35;
+    const tier1Min = adminSettings?.commission?.tier1Threshold ?? 30;
+    if (margin >= tier2Min) return "text-green-600";
+    if (margin >= tier1Min) return "text-yellow-600";
     return "text-red-600";
   };
   
@@ -970,7 +1017,10 @@ export default function SprayFoamEstimator() {
           <div className="flex flex-col gap-4 bg-white p-4 md:p-6 rounded-lg shadow-sm">
             <div className="flex flex-col lg:flex-row gap-4 justify-between items-start">
               <div className="flex-1 w-full">
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">Eco Innovations Estimator</h1>
+                <div className="flex items-center justify-between mb-4">
+                  <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{adminSettings?.companyName ? `${adminSettings.companyName} Estimator` : 'Eco Innovations Estimator'}</h1>
+                  {onAdmin && <button onClick={onAdmin} className="text-xs text-gray-400 hover:text-gray-600 no-print">Admin</button>}
+                </div>
                 <input
                   type="text"
                   placeholder="Enter estimate name..."

@@ -17,9 +17,20 @@ Preferred communication style: Simple, everyday language.
 - **Entry Point**: `src/index.js` renders the main `SprayFoamEstimator` component from `App.jsx`
 
 ### Application Structure
-- **Single Page Application**: Client-side only React app with no backend
-- **Component Structure**: Main application component is `SprayFoamEstimator` in `App.jsx`
+- **Single Page Application**: React app with Express backend for API and database
+- **Routing**: Hash-based routing (`#/admin` for admin console, default for estimator) in `src/index.js`
+- **Component Structure**: Main estimator in `App.jsx`, admin console in `AdminConsole.jsx`
 - **Development Server**: Runs on port 5000 with host check disabled for Replit compatibility
+
+### Admin Console
+- **URL**: `/#/admin` - password-protected admin settings UI
+- **Password**: Stored hashed in PostgreSQL `admin_settings` table (default: "admin123")
+- **Settings Storage**: Single-row JSONB in `admin_settings` table (id=1 constraint)
+- **Configurable Defaults**: Foam types (Open/Closed Cell thickness, price, markup, board feet), labor (rate, markup), project (travel, waste, equipment), commission (tier thresholds and rates), company name
+- **API Endpoints**: `GET/PUT /api/admin/settings`, `POST /api/admin/verify-password`
+- **Estimator Integration**: On load, estimator fetches admin settings and applies them as defaults; falls back to hardcoded values if API fails
+- **Reset Uses Admin Settings**: Reset button applies admin-configured defaults instead of hardcoded values
+- **Commission Tiers**: Configurable via admin (default: 10% at 30%+ margin, 12% at 35%+ margin)
 
 ### Build Configuration
 - **Tailwind Content Paths**: Configured to scan `src/**/*.{js,jsx,ts,tsx}` and `public/index.html`
