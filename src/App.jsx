@@ -752,16 +752,25 @@ export default function SprayFoamEstimator() {
         });
       }
       
+      const quotePayload = {
+        clientId: client.id,
+        propertyId,
+        title: estimateName || 'Spray Foam Estimate',
+        lineItems,
+        notes: projectNotes,
+      };
+      
+      if (discountDollar > 0) {
+        quotePayload.discount = {
+          rate: parseFloat(discountPercent.toFixed(2)),
+          type: 'Percent',
+        };
+      }
+      
       const quoteResponse = await fetch('/api/jobber/create-quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId: client.id,
-          propertyId,
-          title: estimateName || 'Spray Foam Estimate',
-          lineItems,
-          notes: projectNotes,
-        }),
+        body: JSON.stringify(quotePayload),
       });
       
       if (!quoteResponse.ok) {

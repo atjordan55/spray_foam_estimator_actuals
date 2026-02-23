@@ -84,6 +84,7 @@ Preferred communication style: Simple, everyday language.
 - **Visual Display**: Discount shown in green when applied
 - **Profit Calculations**: All profit margins and commissions calculated from discounted Customer Charge
 - **Reset Integration**: Discount values cleared when resetting estimate
+- **Jobber Sync**: Discount percentage sent to Jobber quote's discount field when creating quotes
 
 ### Actual Results Enhancements
 - **New Input Fields**: Added Actual Fuel Cost, Actual Waste Disposal, Actual Equipment Rental inputs (default to Project Parameters values)
