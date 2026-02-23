@@ -294,7 +294,8 @@ export default function SprayFoamEstimator() {
   };
 
   const calculateFoamApplicationCost = (area, foamApp) => {
-    const sqft = calculateEffectiveSqFt(area);
+    const rawSqft = calculateEffectiveSqFt(area);
+    const sqft = Math.round(rawSqft);
     const boardFeetPerInch = sqft;
     const totalBoardFeet = boardFeetPerInch * foamApp.foamThickness;
     const sets = totalBoardFeet / foamApp.boardFeetPerSet;
@@ -563,7 +564,7 @@ export default function SprayFoamEstimator() {
       const newMarkup = ((pricePerSet / materialCostPerSet) - 1) * 100;
       
       const updated = [...sprayAreas];
-      updated[areaIndex].foamApplications[foamIndex].materialMarkup = Math.max(0, newMarkup);
+      updated[areaIndex].foamApplications[foamIndex].materialMarkup = Math.max(0, Math.round(newMarkup * 100) / 100);
       setSprayAreas(updated);
     }
     
