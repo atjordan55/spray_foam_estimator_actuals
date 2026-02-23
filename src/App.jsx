@@ -818,15 +818,15 @@ export default function SprayFoamEstimator() {
       
       if (discountDollar > 0) {
         quotePayload.discount = {
-          rate: parseFloat(discountPercent.toFixed(2)),
-          type: 'Percent',
+          rate: parseFloat(discountDollar.toFixed(2)),
+          type: 'Unit',
         };
       }
       
       if (depositDollar > 0) {
         quotePayload.deposit = {
-          rate: parseFloat(depositPercent.toFixed(2)),
-          type: 'Percent',
+          rate: parseFloat(depositDollar.toFixed(2)),
+          type: 'Unit',
         };
       }
       
