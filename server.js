@@ -445,7 +445,7 @@ app.get('/api/jobber/introspect-quote', async (req, res) => {
 
 app.post('/api/jobber/create-quote', async (req, res) => {
   try {
-    const { clientId, propertyId, title, lineItems, notes, discount } = req.body;
+    const { clientId, propertyId, title, lineItems, notes, discount, deposit } = req.body;
     
     if (!propertyId) {
       throw new Error('Property ID is required to create a quote');
@@ -460,13 +460,14 @@ app.post('/api/jobber/create-quote', async (req, res) => {
     }));
     
     const createMutation = `
-      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [QuoteCreateLineItemAttributes!]!, $discount: CostModifierAttributes) {
+      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [QuoteCreateLineItemAttributes!]!, $discount: CostModifierAttributes, $deposit: CostModifierAttributes) {
         quoteCreate(attributes: {
           clientId: $clientId
           propertyId: $propertyId
           title: $title
           lineItems: $lineItems
           discount: $discount
+          deposit: $deposit
         }) {
           quote {
             id
@@ -492,6 +493,13 @@ app.post('/api/jobber/create-quote', async (req, res) => {
       variables.discount = {
         rate: discount.rate,
         type: discount.type,
+      };
+    }
+    
+    if (deposit && deposit.rate > 0) {
+      variables.deposit = {
+        rate: deposit.rate,
+        type: deposit.type,
       };
     }
     

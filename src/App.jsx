@@ -148,6 +148,12 @@ export default function SprayFoamEstimator() {
   const [discountPercentInput, setDiscountPercentInput] = useState("");
   const [discountDollarFocused, setDiscountDollarFocused] = useState(false);
   const [discountPercentFocused, setDiscountPercentFocused] = useState(false);
+  const [depositDollar, setDepositDollar] = useState(0);
+  const [depositPercent, setDepositPercent] = useState(0);
+  const [depositDollarInput, setDepositDollarInput] = useState("");
+  const [depositPercentInput, setDepositPercentInput] = useState("");
+  const [depositDollarFocused, setDepositDollarFocused] = useState(false);
+  const [depositPercentFocused, setDepositPercentFocused] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -390,6 +396,50 @@ export default function SprayFoamEstimator() {
     setDiscountDollarInput(dollarValue.toFixed(2));
   };
 
+  const handleDepositDollarChange = (value, customerChargeValue) => {
+    const parsed = parseFloat(value) || 0;
+    const validDollar = Math.max(0, Math.min(parsed, customerChargeValue));
+    setDepositDollar(validDollar);
+    setDepositDollarInput(value);
+    if (customerChargeValue > 0) {
+      const percentValue = (validDollar / customerChargeValue) * 100;
+      setDepositPercent(percentValue);
+      setDepositPercentInput(percentValue.toFixed(2));
+    }
+  };
+
+  const handleDepositPercentChange = (value, customerChargeValue) => {
+    const parsed = parseFloat(value) || 0;
+    const validPercent = Math.max(0, Math.min(parsed, 100));
+    setDepositPercent(validPercent);
+    setDepositPercentInput(value);
+    const dollarValue = (validPercent / 100) * customerChargeValue;
+    setDepositDollar(dollarValue);
+    setDepositDollarInput(dollarValue.toFixed(2));
+  };
+
+  const handleDepositDollarBlur = (customerChargeValue) => {
+    setDepositDollarFocused(false);
+    const validDollar = Math.max(0, Math.min(depositDollar, customerChargeValue));
+    setDepositDollar(validDollar);
+    setDepositDollarInput(validDollar.toFixed(2));
+    if (customerChargeValue > 0) {
+      const percentValue = (validDollar / customerChargeValue) * 100;
+      setDepositPercent(percentValue);
+      setDepositPercentInput(percentValue.toFixed(2));
+    }
+  };
+
+  const handleDepositPercentBlur = (customerChargeValue) => {
+    setDepositPercentFocused(false);
+    const validPercent = Math.max(0, Math.min(depositPercent, 100));
+    setDepositPercent(validPercent);
+    setDepositPercentInput(validPercent.toFixed(2));
+    const dollarValue = (validPercent / 100) * customerChargeValue;
+    setDepositDollar(dollarValue);
+    setDepositDollarInput(dollarValue.toFixed(2));
+  };
+
   const handleActualsChange = (key, value) => {
     const parsed = parseFloat(value);
     setActuals({ ...actuals, [key]: isNaN(parsed) ? null : Math.max(0, parsed) });
@@ -556,6 +606,10 @@ export default function SprayFoamEstimator() {
       setDiscountPercent(0);
       setDiscountDollarInput("");
       setDiscountPercentInput("");
+      setDepositDollar(0);
+      setDepositPercent(0);
+      setDepositDollarInput("");
+      setDepositPercentInput("");
     }
   };
 
@@ -571,6 +625,8 @@ export default function SprayFoamEstimator() {
       actuals,
       discountDollar,
       discountPercent,
+      depositDollar,
+      depositPercent,
       savedAt: new Date().toISOString()
     };
     const json = JSON.stringify(data, null, 2);
@@ -652,6 +708,8 @@ export default function SprayFoamEstimator() {
     });
     setDiscountDollar(data.discountDollar ?? 0);
     setDiscountPercent(data.discountPercent ?? 0);
+    setDepositDollar(data.depositDollar ?? 0);
+    setDepositPercent(data.depositPercent ?? 0);
     setActualsConfirmed(false);
     setEstimateNameManuallyEdited(!!data.estimateName);
     setChargedLaborRateError("");
@@ -763,6 +821,13 @@ export default function SprayFoamEstimator() {
       if (discountDollar > 0) {
         quotePayload.discount = {
           rate: parseFloat(discountPercent.toFixed(2)),
+          type: 'Percent',
+        };
+      }
+      
+      if (depositDollar > 0) {
+        quotePayload.deposit = {
+          rate: parseFloat(depositPercent.toFixed(2)),
           type: 'Percent',
         };
       }
@@ -1213,6 +1278,52 @@ export default function SprayFoamEstimator() {
                         setDiscountPercentInput(discountPercent === 0 ? "" : discountPercent.toFixed(2));
                       }}
                       onBlur={() => handleDiscountPercentBlur(totalJobCost)}
+                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Deposit Section */}
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Deposit</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Deposit ($)
+                      <Tooltip text="Dollar amount for the required deposit on the customer charge" />
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={depositDollarFocused ? depositDollarInput : (depositDollar === 0 ? "" : depositDollar.toFixed(2))}
+                      onChange={(e) => handleDepositDollarChange(e.target.value, customerCost)}
+                      onFocus={() => {
+                        setDepositDollarFocused(true);
+                        setDepositDollarInput(depositDollar === 0 ? "" : depositDollar.toFixed(2));
+                      }}
+                      onBlur={() => handleDepositDollarBlur(customerCost)}
+                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Deposit (%)
+                      <Tooltip text="Percentage of the customer charge for the required deposit" />
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={depositPercentFocused ? depositPercentInput : (depositPercent === 0 ? "" : depositPercent.toFixed(2))}
+                      onChange={(e) => handleDepositPercentChange(e.target.value, customerCost)}
+                      onFocus={() => {
+                        setDepositPercentFocused(true);
+                        setDepositPercentInput(depositPercent === 0 ? "" : depositPercent.toFixed(2));
+                      }}
+                      onBlur={() => handleDepositPercentBlur(customerCost)}
                       className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>

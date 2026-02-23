@@ -86,6 +86,14 @@ Preferred communication style: Simple, everyday language.
 - **Reset Integration**: Discount values cleared when resetting estimate
 - **Jobber Sync**: Discount percentage sent to Jobber quote's discount field when creating quotes
 
+### Deposit Feature
+- **Deposit ($)**: Dollar amount input for the required deposit on the customer charge
+- **Deposit (%)**: Percentage input that syncs bidirectionally with dollar amount
+- **Based on Customer Charge**: Deposit percentage calculated from the discounted Customer Charge amount
+- **Jobber Sync**: Deposit percentage sent to Jobber quote's deposit field when creating quotes
+- **Reset Integration**: Deposit values cleared when resetting estimate
+- **Save/Load**: Deposit values persisted in saved estimate files with backwards compatibility
+
 ### Actual Results Enhancements
 - **New Input Fields**: Added Actual Fuel Cost, Actual Waste Disposal, Actual Equipment Rental inputs (default to Project Parameters values)
 - **Color-Coded Comparisons**:
