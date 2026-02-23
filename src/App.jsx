@@ -300,16 +300,13 @@ export default function SprayFoamEstimator() {
     const sets = totalBoardFeet / foamApp.boardFeetPerSet;
     const gallons = sets * 100;
     const materialCost = foamApp.materialPrice * 1.20;
-    const baseMaterialCost = sets * materialCost;
-    const markupAmount = baseMaterialCost * (foamApp.materialMarkup / 100);
+    const baseMaterialCost = Math.round(sets * materialCost * 100) / 100;
+    const markupAmount = Math.round(baseMaterialCost * (foamApp.materialMarkup / 100) * 100) / 100;
     
-    // Calculate pricePerSqFt rounded to 2 decimals, then derive totalCost from it
-    // This ensures displayed $/Sq Ft × Sq Ft = Total (for Jobber consistency)
     const rawTotal = baseMaterialCost + markupAmount;
     const pricePerSqFt = sqft > 0 ? Math.round((rawTotal / sqft) * 100) / 100 : 0;
-    const totalCost = pricePerSqFt * sqft;
+    const totalCost = Math.round(pricePerSqFt * sqft * 100) / 100;
     
-    // R-Value calculation: Closed Cell = 7.2 per inch, Open Cell = 3.8 per inch
     const rValuePerInch = foamApp.foamType === "Closed" ? 7.2 : 3.8;
     const rValue = rValuePerInch * foamApp.foamThickness;
 
@@ -800,7 +797,7 @@ export default function SprayFoamEstimator() {
       });
       
       const fuelCostAmount = globalInputs.travelDistance * globalInputs.travelRate;
-      const laborTotal = baseLaborCost + laborMarkupAmount + fuelCostAmount + globalInputs.wasteDisposal + globalInputs.equipmentRental;
+      const laborTotal = Math.round((baseLaborCost + laborMarkupAmount + fuelCostAmount + globalInputs.wasteDisposal + globalInputs.equipmentRental) * 100) / 100;
       if (laborTotal > 0) {
         lineItems.push({
           name: 'Complete Spray Foam Insulation Solution',
@@ -885,11 +882,11 @@ export default function SprayFoamEstimator() {
   const openCostPerGallon = totalGallons.open > 0 ? weightedOpenCostPerGallon / totalGallons.open : 0;
   const closedCostPerGallon = totalGallons.closed > 0 ? weightedClosedCostPerGallon / totalGallons.closed : 0;
 
-  const fuelCost = globalInputs.travelDistance * globalInputs.travelRate;
-  const baseLaborCost = globalInputs.laborHours * globalInputs.manualLaborRate;
-  const totalBaseCost = baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
-  const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
-  const totalJobCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
+  const fuelCost = Math.round(globalInputs.travelDistance * globalInputs.travelRate * 100) / 100;
+  const baseLaborCost = Math.round(globalInputs.laborHours * globalInputs.manualLaborRate * 100) / 100;
+  const totalBaseCost = Math.round((baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental) * 100) / 100;
+  const laborMarkupAmount = Math.round(baseLaborCost * (globalInputs.laborMarkup / 100) * 100) / 100;
+  const totalJobCost = Math.round((totalBaseCost + materialMarkupAmount + laborMarkupAmount) * 100) / 100;
   const customerCost = totalJobCost - discountDollar;
   
   const netProfitBeforeCommission = customerCost - totalBaseCost;
@@ -916,9 +913,9 @@ export default function SprayFoamEstimator() {
   const effectiveActualWasteDisposal = actuals.actualWasteDisposal ?? globalInputs.wasteDisposal;
   const effectiveActualEquipmentRental = actuals.actualEquipmentRental ?? globalInputs.equipmentRental;
 
-  const actualMaterialCost = effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon;
-  const actualLaborCost = effectiveActualLaborHours * globalInputs.manualLaborRate;
-  const actualBaseCost = actualMaterialCost + actualLaborCost + effectiveActualFuelCost + effectiveActualWasteDisposal + effectiveActualEquipmentRental;
+  const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon) * 100) / 100;
+  const actualLaborCost = Math.round(effectiveActualLaborHours * globalInputs.manualLaborRate * 100) / 100;
+  const actualBaseCost = Math.round((actualMaterialCost + actualLaborCost + effectiveActualFuelCost + effectiveActualWasteDisposal + effectiveActualEquipmentRental) * 100) / 100;
   const actualCustomerCost = customerCost;
   
   const actualNetProfitBeforeCommission = actualCustomerCost - actualBaseCost;
