@@ -149,4 +149,5 @@ Preferred communication style: Simple, everyday language.
 - **Lead Source**: Set to blank when creating new clients (not auto-filled with app name)
 - **Labor Line Item**: Includes base labor, markup, fuel cost, waste disposal, and equipment rental
 - **Price Consistency**: $/Sq Ft rounded to 2 decimals, total calculated from rounded value to match Jobber quotes
-- **Default Closed Cell Markup**: 60.59% (results in $2.38/sq ft at 2" thickness)
+- **Default Closed Cell Markup**: 66.67% (results in $2.30/sq ft at 2" thickness)
+- **Default Open Cell Markup**: 76.77% (results in $1.70/sq ft at 6" thickness)

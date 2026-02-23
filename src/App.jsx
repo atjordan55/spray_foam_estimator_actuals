@@ -54,7 +54,7 @@ const createFoamApplication = (foamType = "Open") => {
       foamType: "Closed",
       foamThickness: 2,
       materialPrice: 2300,
-      materialMarkup: 60.59,
+      materialMarkup: 66.67,
       boardFeetPerSet: 4000
     };
   }
@@ -63,7 +63,7 @@ const createFoamApplication = (foamType = "Open") => {
     foamType: "Open",
     foamThickness: 6,
     materialPrice: 1870,
-    materialMarkup: 75,
+    materialMarkup: 76.77,
     boardFeetPerSet: 14000
   };
 };
@@ -477,12 +477,12 @@ export default function SprayFoamEstimator() {
       if (value === "Open") {
         foamApp.foamThickness = 6;
         foamApp.materialPrice = 1870;
-        foamApp.materialMarkup = 75;
+        foamApp.materialMarkup = 76.77;
         foamApp.boardFeetPerSet = 14000;
       } else if (value === "Closed") {
         foamApp.foamThickness = 2;
         foamApp.materialPrice = 2300;
-        foamApp.materialMarkup = 60.59;
+        foamApp.materialMarkup = 66.67;
         foamApp.boardFeetPerSet = 4000;
       }
     } else {
@@ -680,7 +680,7 @@ export default function SprayFoamEstimator() {
           foamType: area.foamType || "Open",
           foamThickness: area.foamThickness || 6,
           materialPrice: area.materialPrice || 1870,
-          materialMarkup: area.materialMarkup || 75,
+          materialMarkup: area.materialMarkup || 76.77,
           boardFeetPerSet: area.boardFeetPerSet || 14000
         }]
       };
