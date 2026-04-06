@@ -1731,14 +1731,12 @@ export default function SprayFoamEstimator({ onAdmin }) {
                             >
                               + Add Foam
                             </button>
-                            {(adminSettings?.coatingTypes || []).length > 0 && (
-                              <button 
-                                onClick={() => addCoatingApplication(areaIndex)}
-                                className="text-purple-600 hover:text-purple-700 text-sm font-medium"
-                              >
-                                + Add Coating
-                              </button>
-                            )}
+                            <button 
+                              onClick={() => addCoatingApplication(areaIndex)}
+                              className="text-purple-600 hover:text-purple-700 text-sm font-medium"
+                            >
+                              + Add Coating
+                            </button>
                           </div>
                         </div>
                         
@@ -1761,16 +1759,30 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                     <div>
                                       <label className="block text-sm font-medium text-gray-700 mb-1">Coating Type</label>
-                                      <select
-                                        value={foamApp.coatingTypeId || ""}
-                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'coatingTypeId', e.target.value)}
-                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      >
-                                        <option value="">Select coating...</option>
-                                        {coatingTypes.map(ct => (
-                                          <option key={ct.id} value={ct.id}>{ct.name}</option>
-                                        ))}
-                                      </select>
+                                      {coatingTypes.length > 0 ? (
+                                        <select
+                                          value={foamApp.coatingTypeId || ""}
+                                          onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'coatingTypeId', e.target.value)}
+                                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                          <option value="">Select coating...</option>
+                                          {coatingTypes.map(ct => (
+                                            <option key={ct.id} value={ct.id}>{ct.name}</option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          placeholder="Coating name..."
+                                          value={foamApp.coatingTypeName || ""}
+                                          onChange={(e) => {
+                                            const updated = [...sprayAreas];
+                                            updated[areaIndex].foamApplications[foamIndex].coatingTypeName = e.target.value;
+                                            setSprayAreas(updated);
+                                          }}
+                                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        />
+                                      )}
                                     </div>
                                     <div>
                                       <label className="block text-sm font-medium text-gray-700 mb-1"># Containers</label>
