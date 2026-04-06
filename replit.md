@@ -38,7 +38,23 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-### Usability Improvements (Latest)
+### Dynamic Foam & Coating Types, Generator Fuel, Additional Job Cost Markup (Latest)
+- **Admin: Dynamic Foam Types**: Configurable list of foam types with name, category (Open/Closed for R-value), overhead %, markup, default $/sqft, cost per set, board feet per set
+- **Admin: Coating Types**: Configurable list of coating types with name, cost per container, overhead %, markup, default price per container
+- **Admin: Generator Config**: Burn rate (admin-only), warmup hours, cleanup hours, truck MPG, runtime multiplier default
+- **Admin: Additional Job Cost Markup**: Configurable markup % (default 30%) applied to fuel + waste disposal + equipment rental combined
+- **Admin: Jobber Description Templates**: Configurable description text per area type (Exterior Walls, Roof Deck) and foam category (Open/Closed)
+- **Estimator: Diesel Price Slider**: Slider (0–$8/gal) + number input; auto-computes travel rate (diesel/truckMPG) and generator fuel cost
+- **Estimator: Generator Fuel Cost**: burnRate × (laborHours × multiplier + warmupHours + cleanupHours) × dieselPrice
+- **Estimator: Total Fuel = travel + generator** — travel rate input disabled (auto) when diesel > 0
+- **Estimator: Additional Job Costs Markup**: markup on (fuel + waste + equipment) shown as separate line in Estimate Summary
+- **Estimator: Coating Applications in Areas**: Each area can have coating applications (purple cards) alongside foam applications
+- **Estimator: Admin Foam Type Dropdown**: Project area foam type picker uses admin-configured foam types list; falls back to Open/Closed if none configured
+- **Estimator: materialCostPct overhead** used in all foam cost calculations instead of hardcoded 20%
+- **Foam App Structure**: New foamTypeId/foamTypeName/foamTypeCategory fields; backwards-compatible via migrateFoamApplication()
+- **Jobber Line Items**: Uses foamTypeName for line item names; uses admin jobberDescriptions for descriptions; handles coating line items
+
+### Usability Improvements
 - **Customer Information Section**: Added fields for customer name, phone, email, and address
 - **Customer Name as Estimate Name**: Customer name auto-populates the estimate name field if empty
 - **Date Fields**: Estimate Date and Valid Until (expiration) date fields with 30-day default validity

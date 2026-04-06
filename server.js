@@ -28,6 +28,23 @@ const JOBBER_AUTH_URL = 'https://api.getjobber.com/api/oauth/authorize';
 const JOBBER_TOKEN_URL = 'https://api.getjobber.com/api/oauth/token';
 const JOBBER_API_URL = 'https://api.getjobber.com/api/graphql';
 
+const DEFAULT_FOAM_TYPES = [
+  { id: 'open-cell', name: 'Open Cell', category: 'Open', foamThickness: 6, foamCostPerSet: 1870, materialCostPct: 20, boardFeetPerSet: 14000, materialMarkup: 76.77, defaultPricePerSqFt: 1.70 },
+  { id: 'closed-cell', name: 'Closed Cell', category: 'Closed', foamThickness: 2, foamCostPerSet: 2300, materialCostPct: 20, boardFeetPerSet: 4000, materialMarkup: 66.67, defaultPricePerSqFt: 2.30 }
+];
+
+const DEFAULT_JOBBER_DESCRIPTIONS = {
+  'General Area-Open': 'Spray foam insulation applied to general area surfaces. Provides air sealing, thermal resistance, and sound deadening.',
+  'General Area-Closed': 'Closed cell spray foam insulation applied to general area surfaces. Provides thermal barrier, moisture seal, and structural enhancement.',
+  'Exterior Walls-Open': 'Open cell spray foam insulation applied to exterior wall cavities. Provides air seal, sound deadening, and thermal resistance.',
+  'Exterior Walls-Closed': 'Closed cell spray foam insulation applied to exterior wall cavities. Provides thermal barrier, moisture seal, and structural enhancement.',
+  'Roof Deck-Open': 'Open cell spray foam insulation applied to roof deck. Provides air seal, sound deadening, and thermal resistance.',
+  'Roof Deck-Closed': 'Closed cell spray foam insulation applied to roof deck. Provides air seal, moisture barrier, and thermal resistance.',
+  'Gable-Open': 'Open cell spray foam insulation applied to gable area. Provides air seal and thermal resistance.',
+  'Gable-Closed': 'Closed cell spray foam insulation applied to gable area. Provides thermal barrier and moisture seal.',
+  'labor': 'Includes a full-service spray foam insulation package: on-site evaluation, masking and surface prep, application at the specified thickness, and post-job cleanup. Designed to deliver maximum R-value, air sealing, and moisture control for residential or commercial projects.',
+};
+
 async function initDatabase() {
   try {
     await pool.query(`
@@ -41,6 +58,52 @@ async function initDatabase() {
         CONSTRAINT single_row CHECK (id = 1)
       )
     `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS admin_settings (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        settings JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT admin_single_row CHECK (id = 1)
+      )
+    `);
+
+    const existing = await pool.query('SELECT settings FROM admin_settings WHERE id = 1');
+    if (existing.rows.length === 0) {
+      const defaultSettings = {
+        companyName: 'Eco Innovations',
+        adminPassword: 'admin123',
+        foamTypes: DEFAULT_FOAM_TYPES,
+        coatingTypes: [],
+        generator: { burnRate: 0.86, warmupHours: 1.0, cleanupHours: 0.5, truckMpg: 12, runtimeMultiplierDefault: 1.15 },
+        additionalJobCostMarkupPct: 30,
+        jobberDescriptions: DEFAULT_JOBBER_DESCRIPTIONS,
+        labor: { laborRate: 65, laborMarkup: 40 },
+        project: { travelDistance: 50, travelRate: 0.70, wasteDisposal: 50, equipmentRental: 0 },
+        commission: { tier1Threshold: 30, tier1Rate: 10, tier2Threshold: 35, tier2Rate: 12 },
+      };
+      await pool.query('INSERT INTO admin_settings (id, settings) VALUES (1, $1)', [JSON.stringify(defaultSettings)]);
+    } else {
+      // Migrate existing settings to add new fields
+      const s = existing.rows[0].settings;
+      let changed = false;
+      if (!s.foamTypes) {
+        s.foamTypes = [
+          { id: 'open-cell', name: 'Open Cell', category: 'Open', foamThickness: s.openCell?.foamThickness ?? 6, foamCostPerSet: s.openCell?.materialPrice ?? 1870, materialCostPct: 20, boardFeetPerSet: s.openCell?.boardFeetPerSet ?? 14000, materialMarkup: s.openCell?.materialMarkup ?? 76.77, defaultPricePerSqFt: s.openCell?.defaultPricePerSqFt ?? 1.70 },
+          { id: 'closed-cell', name: 'Closed Cell', category: 'Closed', foamThickness: s.closedCell?.foamThickness ?? 2, foamCostPerSet: s.closedCell?.materialPrice ?? 2300, materialCostPct: 20, boardFeetPerSet: s.closedCell?.boardFeetPerSet ?? 4000, materialMarkup: s.closedCell?.materialMarkup ?? 66.67, defaultPricePerSqFt: s.closedCell?.defaultPricePerSqFt ?? 2.30 },
+        ];
+        changed = true;
+      }
+      if (!s.coatingTypes) { s.coatingTypes = []; changed = true; }
+      if (!s.generator) { s.generator = { burnRate: 0.86, warmupHours: 1.0, cleanupHours: 0.5, truckMpg: 12, runtimeMultiplierDefault: 1.15 }; changed = true; }
+      if (s.additionalJobCostMarkupPct === undefined) { s.additionalJobCostMarkupPct = 30; changed = true; }
+      if (!s.jobberDescriptions) { s.jobberDescriptions = DEFAULT_JOBBER_DESCRIPTIONS; changed = true; }
+      if (changed) {
+        await pool.query('UPDATE admin_settings SET settings = $1, updated_at = NOW() WHERE id = 1', [JSON.stringify(s)]);
+      }
+    }
+
     console.log('Database initialized');
   } catch (err) {
     console.error('Database init error:', err);

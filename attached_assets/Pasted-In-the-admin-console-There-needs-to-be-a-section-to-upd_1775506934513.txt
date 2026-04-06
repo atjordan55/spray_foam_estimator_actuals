@@ -1,0 +1,26 @@
+In the admin console:
+
+There needs to be a section to update the default description for each item being added to Jobber . For example each area type selected should be able to have an default description for each. 
+
+There needs to be an area in the admin console to add different Foam Types (currently we have Open and Closed - in the future may need to update this to include specific manufactures) where default foam thickness, Foam Cost per set, Board Feet per Set, percentage being used to calculate Material Cost per Set ($/Per Set will not be manually adjusted and will automatically update), Material Markup or $/Sq Ft(only one or the other with the other automatically adjusting) can be adjusted. 
+
+Along with Foam Types there needs to be the ability to add Coating Type. For now lets included the same fields that are being used for Foam Types. But instead of using Foam for Foam Type, Foam Thickness (inches), and Foam Cost per Set - we can change it to Coating (ex. Coating Type). We can leave out Board Feet per Set since we don't need to calculate yield here, change Material Cost per Set to Material Cost per container, change $/Per Set to $/Per Container, Change Foam Cost per Set to Coating Cost per container.
+
+
+On the estimate form:
+
+There needs to be an area to enter the current diesel fuel prices using a slider. This will automatically calculate the Travel Rate ($/mile).
+
+Also, the rig uses diesel fuel while the generator is running so we need to calculate the cost based on the amount of estimated time for it to run for the project. The below calculation for Generator Fuel Cost Per Hour should be calculated based on the selected diesel fuel cost.
+
+Generator Burn Rate: 0.86 gal/hr (This is an average burn rate and should be the default greyed out and only updated in admin console)
+Generator Fuel Cost Per Hour: (Calculated from current fuel costs)
+Warmup Hours: 1.0 (Default set in admin console- can be updated manually)
+Cleanup Hours: 0.5 (Default set in admin console- can be updated manually)
+Runtime Multiplier: (1.1 - 1.25)
+
+Let's update the Fuel Cost in the estimator to include both travel and generator runtime
+
+Job costs associated with Fuel Cost, Waste Disposal, Equipment Rental should include a minimal markup so the profitability of the job is not affected by these additional job expenses. Let's go with a flat 30% markup when calculating these costs. Let's calculate this in the Estimate Summary under Labor Markup let's add a field called "Additional Job Costs:" that includes this markup. Adjust calculations accordingly. 
+
+If coating types should be an option along with foam type in the Project Areas section. Each field should reflect the entered default amounts. If no amounts have been selected as defaults the appropriate sections should be blank and fillable by the user. 
