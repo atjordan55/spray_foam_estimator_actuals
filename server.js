@@ -29,8 +29,44 @@ const JOBBER_TOKEN_URL = 'https://api.getjobber.com/api/oauth/token';
 const JOBBER_API_URL = 'https://api.getjobber.com/api/graphql';
 
 const DEFAULT_FOAM_TYPES = [
-  { id: 'open-cell', name: 'Open Cell', category: 'Open', foamThickness: 6, foamCostPerSet: 1870, materialCostPct: 20, boardFeetPerSet: 14000, materialMarkup: 76.77, defaultPricePerSqFt: 1.70 },
-  { id: 'closed-cell', name: 'Closed Cell', category: 'Closed', foamThickness: 2, foamCostPerSet: 2300, materialCostPct: 20, boardFeetPerSet: 4000, materialMarkup: 66.67, defaultPricePerSqFt: 2.30 }
+  {
+    id: 'open-cell',
+    name: 'Open Cell', productName: 'Open Cell',
+    productCategory: 'foam',
+    active: true,
+    category: 'Open',
+    containerType: '110-gallon set',
+    grossGallonsPerSet: 110,
+    usableGallonsPerSet: 100,
+    thicknessType: 'inch',
+    foamThickness: 6, defaultThicknessInches: 6,
+    foamCostPerSet: 1870, cost: 1870,
+    materialCostPct: 20,
+    boardFeetPerSet: 14000,
+    materialMarkup: 76.77, materialMarkupPercent: 76.77,
+    wasteFactorPercent: 0,
+    defaultPricePerSqFt: 1.70,
+    notes: '',
+  },
+  {
+    id: 'closed-cell',
+    name: 'Closed Cell', productName: 'Closed Cell',
+    productCategory: 'foam',
+    active: true,
+    category: 'Closed',
+    containerType: '110-gallon set',
+    grossGallonsPerSet: 110,
+    usableGallonsPerSet: 100,
+    thicknessType: 'inch',
+    foamThickness: 2, defaultThicknessInches: 2,
+    foamCostPerSet: 2300, cost: 2300,
+    materialCostPct: 20,
+    boardFeetPerSet: 4000,
+    materialMarkup: 66.67, materialMarkupPercent: 66.67,
+    wasteFactorPercent: 0,
+    defaultPricePerSqFt: 2.30,
+    notes: '',
+  }
 ];
 
 const DEFAULT_JOBBER_DESCRIPTIONS = {
@@ -77,7 +113,9 @@ async function initDatabase() {
         foamTypes: DEFAULT_FOAM_TYPES,
         coatingTypes: [],
         generator: { burnRate: 0.86, warmupHours: 1.0, cleanupHours: 0.5, truckMpg: 12, runtimeMultiplierDefault: 1.15 },
-        additionalJobCostMarkupPct: 30,
+        fuelMarkupPercent: 30,
+        wasteDisposalMarkupPercent: 30,
+        equipmentRentalMarkupPercent: 30,
         jobberDescriptions: DEFAULT_JOBBER_DESCRIPTIONS,
         labor: { laborRate: 65, laborMarkup: 40 },
         project: { travelDistance: 50, travelRate: 0.70, wasteDisposal: 50, equipmentRental: 0 },
@@ -89,15 +127,67 @@ async function initDatabase() {
       const s = existing.rows[0].settings;
       let changed = false;
       if (!s.foamTypes) {
-        s.foamTypes = [
-          { id: 'open-cell', name: 'Open Cell', category: 'Open', foamThickness: s.openCell?.foamThickness ?? 6, foamCostPerSet: s.openCell?.materialPrice ?? 1870, materialCostPct: 20, boardFeetPerSet: s.openCell?.boardFeetPerSet ?? 14000, materialMarkup: s.openCell?.materialMarkup ?? 76.77, defaultPricePerSqFt: s.openCell?.defaultPricePerSqFt ?? 1.70 },
-          { id: 'closed-cell', name: 'Closed Cell', category: 'Closed', foamThickness: s.closedCell?.foamThickness ?? 2, foamCostPerSet: s.closedCell?.materialPrice ?? 2300, materialCostPct: 20, boardFeetPerSet: s.closedCell?.boardFeetPerSet ?? 4000, materialMarkup: s.closedCell?.materialMarkup ?? 66.67, defaultPricePerSqFt: s.closedCell?.defaultPricePerSqFt ?? 2.30 },
-        ];
+        s.foamTypes = DEFAULT_FOAM_TYPES.map(ft => ({ ...ft }));
         changed = true;
+      } else {
+        // Migrate each foam type to add new flexible profile fields with backward compat
+        s.foamTypes = s.foamTypes.map(ft => {
+          const updated = { ...ft };
+          let modified = false;
+          if (updated.productName === undefined) { updated.productName = updated.name || ''; modified = true; }
+          if (updated.name === undefined) { updated.name = updated.productName || ''; modified = true; }
+          if (updated.productCategory === undefined) { updated.productCategory = 'foam'; modified = true; }
+          if (updated.active === undefined) { updated.active = true; modified = true; }
+          if (updated.cost === undefined) { updated.cost = updated.foamCostPerSet ?? 0; modified = true; }
+          if (updated.foamCostPerSet === undefined) { updated.foamCostPerSet = updated.cost ?? 0; modified = true; }
+          if (updated.materialMarkupPercent === undefined) { updated.materialMarkupPercent = updated.materialMarkup ?? 0; modified = true; }
+          if (updated.materialMarkup === undefined) { updated.materialMarkup = updated.materialMarkupPercent ?? 0; modified = true; }
+          if (updated.wasteFactorPercent === undefined) { updated.wasteFactorPercent = 0; modified = true; }
+          if (updated.notes === undefined) { updated.notes = ''; modified = true; }
+          if (updated.containerType === undefined) { updated.containerType = '110-gallon set'; modified = true; }
+          if (updated.grossGallonsPerSet === undefined) { updated.grossGallonsPerSet = 110; modified = true; }
+          if (updated.usableGallonsPerSet === undefined) { updated.usableGallonsPerSet = 100; modified = true; }
+          if (updated.thicknessType === undefined) { updated.thicknessType = 'inch'; modified = true; }
+          if (updated.defaultThicknessInches === undefined) { updated.defaultThicknessInches = updated.foamThickness ?? 0; modified = true; }
+          if (updated.foamThickness === undefined) { updated.foamThickness = updated.defaultThicknessInches ?? 0; modified = true; }
+          if (modified) changed = true;
+          return updated;
+        });
       }
       if (!s.coatingTypes) { s.coatingTypes = []; changed = true; }
+      else {
+        // Migrate each coating type to add new flexible profile fields
+        s.coatingTypes = s.coatingTypes.map(ct => {
+          const updated = { ...ct };
+          let modified = false;
+          if (updated.productName === undefined) { updated.productName = updated.name || ''; modified = true; }
+          if (updated.name === undefined) { updated.name = updated.productName || ''; modified = true; }
+          if (updated.productCategory === undefined) { updated.productCategory = 'coating'; modified = true; }
+          if (updated.active === undefined) { updated.active = true; modified = true; }
+          if (updated.cost === undefined) { updated.cost = updated.foamCostPerContainer ?? 0; modified = true; }
+          if (updated.foamCostPerContainer === undefined) { updated.foamCostPerContainer = updated.cost ?? 0; modified = true; }
+          if (updated.materialMarkupPercent === undefined) { updated.materialMarkupPercent = updated.materialMarkup ?? 0; modified = true; }
+          if (updated.materialMarkup === undefined) { updated.materialMarkup = updated.materialMarkupPercent ?? 0; modified = true; }
+          if (updated.wasteFactorPercent === undefined) { updated.wasteFactorPercent = 0; modified = true; }
+          if (updated.notes === undefined) { updated.notes = ''; modified = true; }
+          if (updated.containerType === undefined) { updated.containerType = '5 gallon bucket'; modified = true; }
+          if (updated.containerGallons === undefined) { updated.containerGallons = 5; modified = true; }
+          if (updated.calculationMethod === undefined) { updated.calculationMethod = 'manualOverride'; modified = true; }
+          if (updated.thicknessType === undefined) { updated.thicknessType = 'none'; modified = true; }
+          if (updated.defaultThickness === undefined) { updated.defaultThickness = 0; modified = true; }
+          if (updated.sqFtPerGallon === undefined) { updated.sqFtPerGallon = 0; modified = true; }
+          if (updated.solidsByVolumePercent === undefined) { updated.solidsByVolumePercent = 0; modified = true; }
+          if (updated.maxSinglePassWetMils === undefined) { updated.maxSinglePassWetMils = 0; modified = true; }
+          if (modified) changed = true;
+          return updated;
+        });
+      }
       if (!s.generator) { s.generator = { burnRate: 0.86, warmupHours: 1.0, cleanupHours: 0.5, truckMpg: 12, runtimeMultiplierDefault: 1.15 }; changed = true; }
-      if (s.additionalJobCostMarkupPct === undefined) { s.additionalJobCostMarkupPct = 30; changed = true; }
+      // Split combined additionalJobCostMarkupPct into 3 separate markup fields
+      const legacyMarkup = s.additionalJobCostMarkupPct ?? 30;
+      if (s.fuelMarkupPercent === undefined) { s.fuelMarkupPercent = legacyMarkup; changed = true; }
+      if (s.wasteDisposalMarkupPercent === undefined) { s.wasteDisposalMarkupPercent = legacyMarkup; changed = true; }
+      if (s.equipmentRentalMarkupPercent === undefined) { s.equipmentRentalMarkupPercent = legacyMarkup; changed = true; }
       if (!s.jobberDescriptions) { s.jobberDescriptions = DEFAULT_JOBBER_DESCRIPTIONS; changed = true; }
       if (changed) {
         await pool.query('UPDATE admin_settings SET settings = $1, updated_at = NOW() WHERE id = 1', [JSON.stringify(s)]);

@@ -64,12 +64,13 @@ const createFoamApplication = (foamTypeObj = null, settings = null) => {
     id: Date.now() + Math.random(),
     applicationType: 'Foam',
     foamTypeId: ft.id,
-    foamTypeName: ft.name,
+    foamTypeName: ft.productName ?? ft.name,
     foamTypeCategory: ft.category,  // "Open" or "Closed" for R-value
-    foamThickness: ft.foamThickness ?? 6,
-    materialPrice: ft.foamCostPerSet ?? ft.materialPrice ?? 1870,
+    foamThickness: ft.defaultThicknessInches ?? ft.foamThickness ?? 6,
+    materialPrice: ft.cost ?? ft.foamCostPerSet ?? ft.materialPrice ?? 1870,
     materialCostPct: ft.materialCostPct ?? 20,
-    materialMarkup: ft.materialMarkup ?? 76.77,
+    materialMarkup: ft.materialMarkupPercent ?? ft.materialMarkup ?? 76.77,
+    wasteFactorPercent: ft.wasteFactorPercent ?? 0,
     boardFeetPerSet: ft.boardFeetPerSet ?? 14000,
   };
 };
@@ -80,10 +81,11 @@ const createCoatingApplication = (coatingTypeObj = null) => {
     id: Date.now() + Math.random(),
     applicationType: 'Coating',
     coatingTypeId: ct.id || null,
-    coatingTypeName: ct.name || '',
-    materialCostPerContainer: ct.foamCostPerContainer ?? 0,
+    coatingTypeName: ct.productName ?? ct.name ?? '',
+    materialCostPerContainer: ct.cost ?? ct.foamCostPerContainer ?? 0,
     materialCostPct: ct.materialCostPct ?? 20,
-    materialMarkup: ct.materialMarkup ?? 0,
+    materialMarkup: ct.materialMarkupPercent ?? ct.materialMarkup ?? 0,
+    wasteFactorPercent: ct.wasteFactorPercent ?? 0,
     numContainers: 0,
     pricePerContainer: ct.defaultPricePerContainer ?? 0,
   };
@@ -1083,13 +1085,24 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const warmupHours = parseFloat(globalInputs.warmupHours) || 0;
   const cleanupHours = parseFloat(globalInputs.cleanupHours) || 0;
   const runtimeMultiplier = parseFloat(globalInputs.generatorRuntimeMultiplier) || 1.0;
-  const generatorHours = warmupHours + cleanupHours + (globalInputs.laborHours * runtimeMultiplier);
-  const generatorFuelCost = Math.round(generatorBurnRate * generatorHours * (globalInputs.dieselPricePerGallon || 0) * 100) / 100;
+  const generatorRuntime = warmupHours + cleanupHours + (globalInputs.laborHours * runtimeMultiplier);
+  const generatorFuelCost = Math.round(generatorBurnRate * generatorRuntime * (globalInputs.dieselPricePerGallon || 0) * 100) / 100;
   const fuelCost = Math.round((travelFuelCost + generatorFuelCost) * 100) / 100;
 
-  const additionalJobCostMarkupPct = (adminSettings?.additionalJobCostMarkupPct ?? 30) / 100;
-  const additionalJobCostBase = Math.round((fuelCost + (parseFloat(globalInputs.wasteDisposal) || 0) + (parseFloat(globalInputs.equipmentRental) || 0)) * 100) / 100;
-  const additionalJobCostMarkup = Math.round(additionalJobCostBase * additionalJobCostMarkupPct * 100) / 100;
+  // Backward-compat: if old single field present, use as fallback for all 3
+  const legacyJobCostMarkup = adminSettings?.additionalJobCostMarkupPct ?? 30;
+  const fuelMarkupPct = (adminSettings?.fuelMarkupPercent ?? legacyJobCostMarkup) / 100;
+  const wasteDisposalMarkupPct = (adminSettings?.wasteDisposalMarkupPercent ?? legacyJobCostMarkup) / 100;
+  const equipmentRentalMarkupPct = (adminSettings?.equipmentRentalMarkupPercent ?? legacyJobCostMarkup) / 100;
+
+  const wasteDisposalBase = parseFloat(globalInputs.wasteDisposal) || 0;
+  const equipmentRentalBase = parseFloat(globalInputs.equipmentRental) || 0;
+  const additionalJobCostBase = Math.round((fuelCost + wasteDisposalBase + equipmentRentalBase) * 100) / 100;
+
+  const fuelMarkupAmount = Math.round(fuelCost * fuelMarkupPct * 100) / 100;
+  const wasteDisposalMarkupAmount = Math.round(wasteDisposalBase * wasteDisposalMarkupPct * 100) / 100;
+  const equipmentRentalMarkupAmount = Math.round(equipmentRentalBase * equipmentRentalMarkupPct * 100) / 100;
+  const additionalJobCostMarkup = Math.round((fuelMarkupAmount + wasteDisposalMarkupAmount + equipmentRentalMarkupAmount) * 100) / 100;
 
   const baseLaborCost = Math.round(globalInputs.laborHours * globalInputs.manualLaborRate * 100) / 100;
   const totalBaseCost = Math.round((baseMaterialCost + baseLaborCost + additionalJobCostBase) * 100) / 100;
@@ -1128,8 +1141,13 @@ export default function SprayFoamEstimator({ onAdmin }) {
 
   const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon) * 100) / 100;
   const actualLaborCost = Math.round(effectiveActualLaborHours * globalInputs.manualLaborRate * 100) / 100;
-  const actualAdditionalJobCostBase = Math.round((effectiveActualFuelCost + (parseFloat(effectiveActualWasteDisposal) || 0) + (parseFloat(effectiveActualEquipmentRental) || 0)) * 100) / 100;
-  const actualAdditionalJobCostMarkup = Math.round(actualAdditionalJobCostBase * additionalJobCostMarkupPct * 100) / 100;
+  const actualWasteDisposalBase = parseFloat(effectiveActualWasteDisposal) || 0;
+  const actualEquipmentRentalBase = parseFloat(effectiveActualEquipmentRental) || 0;
+  const actualAdditionalJobCostBase = Math.round((effectiveActualFuelCost + actualWasteDisposalBase + actualEquipmentRentalBase) * 100) / 100;
+  const actualFuelMarkupAmount = Math.round(effectiveActualFuelCost * fuelMarkupPct * 100) / 100;
+  const actualWasteDisposalMarkupAmount = Math.round(actualWasteDisposalBase * wasteDisposalMarkupPct * 100) / 100;
+  const actualEquipmentRentalMarkupAmount = Math.round(actualEquipmentRentalBase * equipmentRentalMarkupPct * 100) / 100;
+  const actualAdditionalJobCostMarkup = Math.round((actualFuelMarkupAmount + actualWasteDisposalMarkupAmount + actualEquipmentRentalMarkupAmount) * 100) / 100;
   const actualBaseCost = Math.round((actualMaterialCost + actualLaborCost + actualAdditionalJobCostBase) * 100) / 100;
   const actualCustomerCost = customerCost;
   
@@ -2387,7 +2405,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
                           <span>${travelFuelCost.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between py-1">
-                          <span className="text-gray-600">Generator Fuel ({generatorHours.toFixed(1)} hrs):</span>
+                          <span className="text-gray-600">Generator Runtime ({generatorRuntime.toFixed(1)} hrs):</span>
                           <span>${generatorFuelCost.toFixed(2)}</span>
                         </div>
                       </>
@@ -2418,10 +2436,22 @@ export default function SprayFoamEstimator({ onAdmin }) {
                       <span className="text-gray-600">Labor Markup:</span>
                       <span>${laborMarkupAmount.toFixed(2)}</span>
                     </div>
-                    {additionalJobCostMarkup > 0 && (
+                    {fuelMarkupAmount > 0 && (
                       <div className="flex justify-between py-1">
-                        <span className="text-gray-600">Additional Job Costs Markup ({adminSettings?.additionalJobCostMarkupPct ?? 30}%):</span>
-                        <span>${additionalJobCostMarkup.toFixed(2)}</span>
+                        <span className="text-gray-600">Fuel Markup ({(fuelMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${fuelMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {wasteDisposalMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Waste Disposal Markup ({(wasteDisposalMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${wasteDisposalMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {equipmentRentalMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Equipment Rental Markup ({(equipmentRentalMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${equipmentRentalMarkupAmount.toFixed(2)}</span>
                       </div>
                     )}
                     <hr className="my-3" />
@@ -2502,10 +2532,22 @@ export default function SprayFoamEstimator({ onAdmin }) {
                       <span className="text-gray-600">Labor Markup:</span>
                       <span>${laborMarkupAmount.toFixed(2)}</span>
                     </div>
-                    {actualAdditionalJobCostMarkup > 0 && (
+                    {actualFuelMarkupAmount > 0 && (
                       <div className="flex justify-between py-1">
-                        <span className="text-gray-600">Additional Job Costs Markup ({adminSettings?.additionalJobCostMarkupPct ?? 30}%):</span>
-                        <span>${actualAdditionalJobCostMarkup.toFixed(2)}</span>
+                        <span className="text-gray-600">Fuel Markup ({(fuelMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${actualFuelMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {actualWasteDisposalMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Waste Disposal Markup ({(wasteDisposalMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${actualWasteDisposalMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {actualEquipmentRentalMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Equipment Rental Markup ({(equipmentRentalMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${actualEquipmentRentalMarkupAmount.toFixed(2)}</span>
                       </div>
                     )}
                     <hr className="my-3" />

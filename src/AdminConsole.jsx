@@ -13,8 +13,50 @@ function SectionCard({ title, children }) {
   );
 }
 
-const DEFAULT_FOAM_TYPE = { name: '', category: 'Open', foamThickness: 0, foamCostPerSet: 0, materialCostPct: 20, boardFeetPerSet: 0, materialMarkup: 0, defaultPricePerSqFt: 0 };
-const DEFAULT_COATING_TYPE = { name: '', foamCostPerContainer: 0, materialCostPct: 20, materialMarkup: 0, defaultPricePerContainer: 0 };
+const DEFAULT_FOAM_TYPE = {
+  productName: '', name: '',
+  productCategory: 'foam',
+  active: true,
+  category: 'Open',
+  containerType: '110-gallon set',
+  grossGallonsPerSet: 110,
+  usableGallonsPerSet: 100,
+  thicknessType: 'inch',
+  defaultThicknessInches: 0, foamThickness: 0,
+  cost: 0, foamCostPerSet: 0,
+  materialCostPct: 20,
+  boardFeetPerSet: 0,
+  materialMarkupPercent: 0, materialMarkup: 0,
+  wasteFactorPercent: 0,
+  defaultPricePerSqFt: 0,
+  notes: '',
+};
+
+const DEFAULT_COATING_TYPE = {
+  productName: '', name: '',
+  productCategory: 'coating',
+  active: true,
+  containerType: '5 gallon bucket',
+  containerGallons: 5,
+  calculationMethod: 'manualOverride',
+  thicknessType: 'none',
+  defaultThickness: 0,
+  sqFtPerGallon: 0,
+  solidsByVolumePercent: 0,
+  maxSinglePassWetMils: 0,
+  cost: 0, foamCostPerContainer: 0,
+  materialCostPct: 20,
+  materialMarkupPercent: 0, materialMarkup: 0,
+  wasteFactorPercent: 0,
+  defaultPricePerContainer: 0,
+  notes: '',
+};
+
+const CONTAINER_GALLONS_MAP = {
+  '55 gallon drum': 55,
+  '5 gallon bucket': 5,
+  '1 gallon bucket': 1,
+};
 
 function FoamTypeRow({ foam, index, onChange, onRemove }) {
   const recalcPriceFromMarkup = (f) => {
@@ -29,108 +71,314 @@ function FoamTypeRow({ foam, index, onChange, onRemove }) {
   };
 
   const update = (key, value) => {
-    const parsed = key === 'name' || key === 'category' ? value : (parseFloat(value) || 0);
+    const isText = ['productName', 'name', 'category', 'containerType', 'thicknessType', 'notes'].includes(key);
+    const isBool = key === 'active';
+    const parsed = isBool ? !!value : (isText ? value : (parseFloat(value) || 0));
     const updated = { ...foam, [key]: parsed };
+
+    // Sync alias fields so legacy estimator code keeps working
+    if (key === 'productName') updated.name = parsed;
+    if (key === 'name') updated.productName = parsed;
+    if (key === 'cost') updated.foamCostPerSet = parsed;
+    if (key === 'foamCostPerSet') updated.cost = parsed;
+    if (key === 'materialMarkupPercent') updated.materialMarkup = parsed;
+    if (key === 'materialMarkup') updated.materialMarkupPercent = parsed;
+    if (key === 'defaultThicknessInches') updated.foamThickness = parsed;
+    if (key === 'foamThickness') updated.defaultThicknessInches = parsed;
+
     if (key === 'defaultPricePerSqFt') {
-      updated.materialMarkup = recalcMarkupFromPrice(updated);
-    } else if (['materialMarkup', 'foamCostPerSet', 'materialCostPct', 'foamThickness', 'boardFeetPerSet'].includes(key)) {
+      const nm = recalcMarkupFromPrice(updated);
+      updated.materialMarkup = nm;
+      updated.materialMarkupPercent = nm;
+    } else if (['materialMarkup', 'materialMarkupPercent', 'cost', 'foamCostPerSet', 'materialCostPct', 'defaultThicknessInches', 'foamThickness', 'boardFeetPerSet'].includes(key)) {
       updated.defaultPricePerSqFt = recalcPriceFromMarkup(updated);
     }
     onChange(index, updated);
   };
 
-  const materialCostPerSet = foam.foamCostPerSet * (1 + foam.materialCostPct / 100);
-  const baseCostPerSqFt = foam.boardFeetPerSet > 0 ? (foam.foamThickness / foam.boardFeetPerSet) * materialCostPerSet : 0;
+  const materialCostPerSet = (foam.foamCostPerSet || foam.cost || 0) * (1 + (foam.materialCostPct || 0) / 100);
+  const baseCostPerSqFt = foam.boardFeetPerSet > 0 ? ((foam.foamThickness || foam.defaultThicknessInches || 0) / foam.boardFeetPerSet) * materialCostPerSet : 0;
+  const grossGals = parseFloat(foam.grossGallonsPerSet) || 0;
+  const usableGals = parseFloat(foam.usableGallonsPerSet) || 0;
+  const impliedWastePercent = grossGals > 0 ? ((grossGals - usableGals) / grossGals) * 100 : 0;
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 mb-3 bg-gray-50">
+    <div className={`border rounded-lg p-4 mb-3 ${foam.active === false ? 'bg-gray-100 border-gray-300 opacity-70' : 'bg-gray-50 border-gray-200'}`}>
       <div className="flex justify-between items-start mb-3">
-        <span className="text-sm font-medium text-gray-700">{foam.name || `Foam Type ${index + 1}`}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-gray-700">{foam.productName || foam.name || `Foam Type ${index + 1}`}</span>
+          <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+            <input type="checkbox" checked={foam.active !== false} onChange={(e) => update('active', e.target.checked)} className="h-3.5 w-3.5" />
+            <span>{foam.active !== false ? 'Active' : 'Inactive'}</span>
+          </label>
+        </div>
         <button onClick={() => onRemove(index)} className="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded hover:bg-red-50">Remove</button>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        <div>
-          <label className={labelClass}>Foam Type Name</label>
-          <input type="text" value={foam.name} onChange={(e) => update('name', e.target.value)} className={inputClass} placeholder="e.g. Open Cell" />
+
+      {/* Identity */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
+        <div className="col-span-2">
+          <label className={labelClass}>Product Name</label>
+          <input type="text" value={foam.productName || foam.name || ''} onChange={(e) => update('productName', e.target.value)} className={inputClass} placeholder="e.g. Open Cell" />
         </div>
         <div>
-          <label className={labelClass}>Category (for R-value)</label>
+          <label className={labelClass}>Product Category</label>
+          <input type="text" value="foam" readOnly className={disabledInputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>R-Value Category</label>
           <select value={foam.category} onChange={(e) => update('category', e.target.value)} className={inputClass}>
-            <option value="Open">Open Cell</option>
-            <option value="Closed">Closed Cell</option>
+            <option value="Open">Open Cell (R-3.8/in)</option>
+            <option value="Closed">Closed Cell (R-7.2/in)</option>
           </select>
         </div>
+      </div>
+
+      {/* Container & yield */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
         <div>
-          <label className={labelClass}>Default Thickness (in)</label>
-          <input type="number" step="0.5" min="0" value={foam.foamThickness || ''} onChange={(e) => update('foamThickness', e.target.value)} className={inputClass} />
+          <label className={labelClass}>Container Type</label>
+          <input type="text" value={foam.containerType || '110-gallon set'} onChange={(e) => update('containerType', e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className={labelClass}>Foam Cost per Set ($)</label>
-          <input type="number" step="0.01" min="0" value={foam.foamCostPerSet || ''} onChange={(e) => update('foamCostPerSet', e.target.value)} className={inputClass} />
+          <label className={labelClass}>Gross Gallons / Set</label>
+          <input type="number" step="1" min="0" value={foam.grossGallonsPerSet ?? ''} onChange={(e) => update('grossGallonsPerSet', e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className={labelClass}>Overhead % (Material Cost)</label>
-          <input type="number" step="0.1" min="0" value={foam.materialCostPct || ''} onChange={(e) => update('materialCostPct', e.target.value)} className={inputClass} />
+          <label className={labelClass}>Usable Gallons / Set</label>
+          <input type="number" step="1" min="0" value={foam.usableGallonsPerSet ?? ''} onChange={(e) => update('usableGallonsPerSet', e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Implied Waste (%)</label>
+          <input type="text" value={`${impliedWastePercent.toFixed(2)}%`} readOnly className={disabledInputClass} />
         </div>
         <div>
           <label className={labelClass}>Board Feet per Set</label>
           <input type="number" step="100" min="0" value={foam.boardFeetPerSet || ''} onChange={(e) => update('boardFeetPerSet', e.target.value)} className={inputClass} />
         </div>
         <div>
+          <label className={labelClass}>Thickness Type</label>
+          <select value={foam.thicknessType || 'inch'} onChange={(e) => update('thicknessType', e.target.value)} className={inputClass}>
+            <option value="inch">Inch</option>
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Default Thickness (in)</label>
+          <input type="number" step="0.5" min="0" value={foam.defaultThicknessInches ?? foam.foamThickness ?? ''} onChange={(e) => update('defaultThicknessInches', e.target.value)} className={inputClass} />
+        </div>
+      </div>
+
+      {/* Cost & pricing */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
+        <div>
+          <label className={labelClass}>Cost per Set ($)</label>
+          <input type="number" step="0.01" min="0" value={foam.cost ?? foam.foamCostPerSet ?? ''} onChange={(e) => update('cost', e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Overhead % (Material Cost)</label>
+          <input type="number" step="0.1" min="0" value={foam.materialCostPct || ''} onChange={(e) => update('materialCostPct', e.target.value)} className={inputClass} />
+        </div>
+        <div>
           <label className={labelClass}>Material Markup (%)</label>
-          <input type="number" step="0.01" min="0" value={foam.materialMarkup || ''} onChange={(e) => update('materialMarkup', e.target.value)} className={inputClass} />
+          <input type="number" step="0.01" min="0" value={foam.materialMarkupPercent ?? foam.materialMarkup ?? ''} onChange={(e) => update('materialMarkupPercent', e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Waste Factor (%)</label>
+          <input type="number" step="0.1" min="0" value={foam.wasteFactorPercent ?? ''} onChange={(e) => update('wasteFactorPercent', e.target.value)} className={inputClass} />
         </div>
         <div>
           <label className={labelClass}>Default $/Sq Ft</label>
           <input type="number" step="0.01" min="0" value={foam.defaultPricePerSqFt || ''} onChange={(e) => update('defaultPricePerSqFt', e.target.value)} className={inputClass} />
         </div>
-        <div className="col-span-2 sm:col-span-3 lg:col-span-4">
-          <p className="text-xs text-gray-500">
-            Material Cost/Set: ${materialCostPerSet.toFixed(2)} &nbsp;|&nbsp; Base Cost/Sq Ft: ${baseCostPerSqFt.toFixed(4)}
-          </p>
-        </div>
       </div>
+
+      {/* Notes */}
+      <div className="mb-2">
+        <label className={labelClass}>Notes</label>
+        <textarea rows={2} value={foam.notes || ''} onChange={(e) => update('notes', e.target.value)} className={inputClass} placeholder="Internal notes, supplier info, application tips..." />
+      </div>
+
+      <p className="text-xs text-gray-500 mt-2">
+        Material Cost/Set: ${materialCostPerSet.toFixed(2)} &nbsp;|&nbsp; Base Cost/Sq Ft: ${baseCostPerSqFt.toFixed(4)}
+      </p>
     </div>
   );
 }
 
 function CoatingTypeRow({ coating, index, onChange, onRemove }) {
+  const [sampleSqFt, setSampleSqFt] = useState(1000);
+
   const recalcPriceFromMarkup = (c) => {
-    const materialCostPerContainer = c.foamCostPerContainer * (1 + c.materialCostPct / 100);
-    return Math.round(materialCostPerContainer * (1 + c.materialMarkup / 100) * 100) / 100;
+    const cost = c.cost ?? c.foamCostPerContainer ?? 0;
+    const materialCostPerContainer = cost * (1 + (c.materialCostPct || 0) / 100);
+    const markup = c.materialMarkupPercent ?? c.materialMarkup ?? 0;
+    return Math.round(materialCostPerContainer * (1 + markup / 100) * 100) / 100;
   };
   const recalcMarkupFromPrice = (c) => {
-    const materialCostPerContainer = c.foamCostPerContainer * (1 + c.materialCostPct / 100);
+    const cost = c.cost ?? c.foamCostPerContainer ?? 0;
+    const materialCostPerContainer = cost * (1 + (c.materialCostPct || 0) / 100);
     return materialCostPerContainer > 0 ? Math.max(0, Math.round(((c.defaultPricePerContainer / materialCostPerContainer) - 1) * 10000) / 100) : 0;
   };
 
   const update = (key, value) => {
-    const parsed = key === 'name' ? value : (parseFloat(value) || 0);
+    const isText = ['productName', 'name', 'containerType', 'calculationMethod', 'thicknessType', 'notes'].includes(key);
+    const isBool = key === 'active';
+    const parsed = isBool ? !!value : (isText ? value : (parseFloat(value) || 0));
     const updated = { ...coating, [key]: parsed };
+
+    // Sync alias fields so legacy estimator code keeps working
+    if (key === 'productName') updated.name = parsed;
+    if (key === 'name') updated.productName = parsed;
+    if (key === 'cost') updated.foamCostPerContainer = parsed;
+    if (key === 'foamCostPerContainer') updated.cost = parsed;
+    if (key === 'materialMarkupPercent') updated.materialMarkup = parsed;
+    if (key === 'materialMarkup') updated.materialMarkupPercent = parsed;
+
+    // Auto-set containerGallons when containerType changes
+    if (key === 'containerType' && CONTAINER_GALLONS_MAP[parsed] !== undefined) {
+      updated.containerGallons = CONTAINER_GALLONS_MAP[parsed];
+    }
+
     if (key === 'defaultPricePerContainer') {
-      updated.materialMarkup = recalcMarkupFromPrice(updated);
-    } else if (['materialMarkup', 'foamCostPerContainer', 'materialCostPct'].includes(key)) {
+      const nm = recalcMarkupFromPrice(updated);
+      updated.materialMarkup = nm;
+      updated.materialMarkupPercent = nm;
+    } else if (['materialMarkupPercent', 'materialMarkup', 'cost', 'foamCostPerContainer', 'materialCostPct'].includes(key)) {
       updated.defaultPricePerContainer = recalcPriceFromMarkup(updated);
     }
     onChange(index, updated);
   };
 
-  const materialCostPerContainer = coating.foamCostPerContainer * (1 + coating.materialCostPct / 100);
+  // Derived values
+  const cost = parseFloat(coating.cost ?? coating.foamCostPerContainer ?? 0) || 0;
+  const containerGallons = parseFloat(coating.containerGallons) || 0;
+  const wastePct = parseFloat(coating.wasteFactorPercent) || 0;
+  const markupPct = parseFloat(coating.materialMarkupPercent ?? coating.materialMarkup ?? 0) || 0;
+  const calcMethod = coating.calculationMethod || 'manualOverride';
+  const sqFt = parseFloat(sampleSqFt) || 0;
+
+  // Live calculations based on calculationMethod
+  let gallonsNeeded = 0;
+  let sqFtPerGallon = parseFloat(coating.sqFtPerGallon) || 0;
+  let wetMilWarning = '';
+
+  if (calcMethod === 'wetFilmThickness') {
+    const wetMils = parseFloat(coating.defaultThickness) || 0;
+    const maxWet = parseFloat(coating.maxSinglePassWetMils) || 0;
+    const TAR = wetMils > 0 ? wetMils / 16 : 0;
+    gallonsNeeded = TAR > 0 ? (sqFt / 100) * TAR : 0;
+    sqFtPerGallon = TAR > 0 ? 100 / TAR : 0;
+    if (maxWet > 0 && wetMils > maxWet) {
+      wetMilWarning = `Wet mil thickness (${wetMils.toFixed(2)}) exceeds max single-pass (${maxWet.toFixed(2)}). Multiple passes will be required.`;
+    }
+  } else if (calcMethod === 'coveragePerGallon') {
+    gallonsNeeded = sqFtPerGallon > 0 ? sqFt / sqFtPerGallon : 0;
+  } else {
+    // manualOverride — coverage not auto-computed
+    gallonsNeeded = 0;
+  }
+
+  const gallonsWithWaste = gallonsNeeded * (1 + wastePct / 100);
+  const containersNeeded = (containerGallons > 0 && gallonsWithWaste > 0) ? Math.ceil(gallonsWithWaste / containerGallons) : 0;
+  const sqFtPerContainer = sqFtPerGallon * containerGallons;
+  const materialCost = containersNeeded * cost;
+  const materialPriceWithMarkup = materialCost * (1 + markupPct / 100);
+
+  const showThickness = (coating.thicknessType || 'none') !== 'none';
+  const showSqFtPerGallon = calcMethod === 'coveragePerGallon';
+  const showWetFilmFields = calcMethod === 'wetFilmThickness';
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 mb-3 bg-gray-50">
+    <div className={`border rounded-lg p-4 mb-3 ${coating.active === false ? 'bg-gray-100 border-gray-300 opacity-70' : 'bg-gray-50 border-gray-200'}`}>
       <div className="flex justify-between items-start mb-3">
-        <span className="text-sm font-medium text-gray-700">{coating.name || `Coating Type ${index + 1}`}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-gray-700">{coating.productName || coating.name || `Coating Type ${index + 1}`}</span>
+          <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+            <input type="checkbox" checked={coating.active !== false} onChange={(e) => update('active', e.target.checked)} className="h-3.5 w-3.5" />
+            <span>{coating.active !== false ? 'Active' : 'Inactive'}</span>
+          </label>
+        </div>
         <button onClick={() => onRemove(index)} className="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded hover:bg-red-50">Remove</button>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div>
-          <label className={labelClass}>Coating Type Name</label>
-          <input type="text" value={coating.name} onChange={(e) => update('name', e.target.value)} className={inputClass} placeholder="e.g. Elastomeric Coating" />
+
+      {/* Identity */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
+        <div className="col-span-2">
+          <label className={labelClass}>Product Name</label>
+          <input type="text" value={coating.productName || coating.name || ''} onChange={(e) => update('productName', e.target.value)} className={inputClass} placeholder="e.g. Elastomeric Coating" />
         </div>
         <div>
+          <label className={labelClass}>Product Category</label>
+          <input type="text" value="coating" readOnly className={disabledInputClass} />
+        </div>
+      </div>
+
+      {/* Container */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
+        <div>
+          <label className={labelClass}>Container Type</label>
+          <select value={coating.containerType || '5 gallon bucket'} onChange={(e) => update('containerType', e.target.value)} className={inputClass}>
+            <option value="55 gallon drum">55 gallon drum</option>
+            <option value="5 gallon bucket">5 gallon bucket</option>
+            <option value="1 gallon bucket">1 gallon bucket</option>
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Container Gallons (override)</label>
+          <input type="number" step="0.1" min="0" value={coating.containerGallons ?? ''} onChange={(e) => update('containerGallons', e.target.value)} className={inputClass} />
+        </div>
+      </div>
+
+      {/* Calculation method & thickness */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
+        <div>
+          <label className={labelClass}>Calculation Method</label>
+          <select value={calcMethod} onChange={(e) => update('calculationMethod', e.target.value)} className={inputClass}>
+            <option value="coveragePerGallon">Coverage per Gallon</option>
+            <option value="wetFilmThickness">Wet Film Thickness</option>
+            <option value="manualOverride">Manual Override</option>
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Thickness Type</label>
+          <select value={coating.thicknessType || 'none'} onChange={(e) => update('thicknessType', e.target.value)} className={inputClass}>
+            <option value="none">None</option>
+            <option value="inch">Inch</option>
+            <option value="wetMil">Wet Mil</option>
+            <option value="dryMil">Dry Mil</option>
+          </select>
+        </div>
+        {showThickness && (
+          <div>
+            <label className={labelClass}>Default Thickness ({coating.thicknessType})</label>
+            <input type="number" step="0.01" min="0" value={coating.defaultThickness ?? ''} onChange={(e) => update('defaultThickness', e.target.value)} className={inputClass} />
+          </div>
+        )}
+        {showSqFtPerGallon && (
+          <div>
+            <label className={labelClass}>Sq Ft per Gallon</label>
+            <input type="number" step="0.1" min="0" value={coating.sqFtPerGallon ?? ''} onChange={(e) => update('sqFtPerGallon', e.target.value)} className={inputClass} />
+          </div>
+        )}
+        {showWetFilmFields && (
+          <>
+            <div>
+              <label className={labelClass}>Solids by Volume (%)</label>
+              <input type="number" step="0.1" min="0" max="100" value={coating.solidsByVolumePercent ?? ''} onChange={(e) => update('solidsByVolumePercent', e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Max Single-Pass Wet Mils</label>
+              <input type="number" step="0.1" min="0" value={coating.maxSinglePassWetMils ?? ''} onChange={(e) => update('maxSinglePassWetMils', e.target.value)} className={inputClass} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Cost & pricing */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
+        <div>
           <label className={labelClass}>Cost per Container ($)</label>
-          <input type="number" step="0.01" min="0" value={coating.foamCostPerContainer || ''} onChange={(e) => update('foamCostPerContainer', e.target.value)} className={inputClass} />
+          <input type="number" step="0.01" min="0" value={coating.cost ?? coating.foamCostPerContainer ?? ''} onChange={(e) => update('cost', e.target.value)} className={inputClass} />
         </div>
         <div>
           <label className={labelClass}>Overhead % (Material Cost)</label>
@@ -138,17 +386,48 @@ function CoatingTypeRow({ coating, index, onChange, onRemove }) {
         </div>
         <div>
           <label className={labelClass}>Material Markup (%)</label>
-          <input type="number" step="0.01" min="0" value={coating.materialMarkup || ''} onChange={(e) => update('materialMarkup', e.target.value)} className={inputClass} />
+          <input type="number" step="0.01" min="0" value={coating.materialMarkupPercent ?? coating.materialMarkup ?? ''} onChange={(e) => update('materialMarkupPercent', e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className={labelClass}>Default $/Per Container</label>
+          <label className={labelClass}>Waste Factor (%)</label>
+          <input type="number" step="0.1" min="0" value={coating.wasteFactorPercent ?? ''} onChange={(e) => update('wasteFactorPercent', e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Default $/Container</label>
           <input type="number" step="0.01" min="0" value={coating.defaultPricePerContainer || ''} onChange={(e) => update('defaultPricePerContainer', e.target.value)} className={inputClass} />
         </div>
-        <div>
-          <label className={labelClass}>Material Cost/Container</label>
-          <input type="text" value={`$${materialCostPerContainer.toFixed(2)}`} readOnly className={disabledInputClass} />
-        </div>
       </div>
+
+      {/* Notes */}
+      <div className="mb-3">
+        <label className={labelClass}>Notes</label>
+        <textarea rows={2} value={coating.notes || ''} onChange={(e) => update('notes', e.target.value)} className={inputClass} placeholder="Internal notes, supplier info, application tips..." />
+      </div>
+
+      {/* Live outputs preview */}
+      {calcMethod !== 'manualOverride' && (
+        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <h5 className="text-xs font-semibold text-blue-800">Live Calculation Preview</h5>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-blue-800">Sample Sq Ft:</label>
+              <input type="number" step="100" min="0" value={sampleSqFt} onChange={(e) => setSampleSqFt(e.target.value)} className="border border-blue-300 px-2 py-1 rounded text-xs w-24" />
+            </div>
+          </div>
+          {wetMilWarning && (
+            <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1 mb-2">⚠ {wetMilWarning}</p>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-blue-900">
+            <div><span className="text-blue-700">Gallons Needed:</span> <strong>{gallonsNeeded.toFixed(2)}</strong></div>
+            <div><span className="text-blue-700">Gallons w/ Waste:</span> <strong>{gallonsWithWaste.toFixed(2)}</strong></div>
+            <div><span className="text-blue-700">Containers Needed:</span> <strong>{containersNeeded}</strong></div>
+            <div><span className="text-blue-700">Sq Ft / Gallon:</span> <strong>{sqFtPerGallon.toFixed(1)}</strong></div>
+            <div><span className="text-blue-700">Sq Ft / Container:</span> <strong>{sqFtPerContainer.toFixed(1)}</strong></div>
+            <div><span className="text-blue-700">Material Cost:</span> <strong>${materialCost.toFixed(2)}</strong></div>
+            <div className="col-span-2 sm:col-span-3"><span className="text-blue-700">Material Price w/ Markup:</span> <strong>${materialPriceWithMarkup.toFixed(2)}</strong></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -172,7 +451,9 @@ export default function AdminConsole({ onBack }) {
     foamTypes: [],
     coatingTypes: [],
     generator: { burnRate: 0.86, warmupHours: 1.0, cleanupHours: 0.5, truckMpg: 12, runtimeMultiplierDefault: 1.15 },
-    additionalJobCostMarkupPct: 30,
+    fuelMarkupPercent: 30,
+    wasteDisposalMarkupPercent: 30,
+    equipmentRentalMarkupPercent: 30,
     jobberDescriptions: {},
     labor: { laborRate: 65, laborMarkup: 40 },
     project: { travelDistance: 50, travelRate: 0.70, wasteDisposal: 50, equipmentRental: 0 },
@@ -208,12 +489,15 @@ export default function AdminConsole({ onBack }) {
       const data = await res.json();
       if (data.settings) {
         const s = data.settings;
+        const legacyMarkup = s.additionalJobCostMarkupPct ?? 30;
         setSettings({
           companyName: s.companyName || '',
           foamTypes: s.foamTypes || [],
           coatingTypes: s.coatingTypes || [],
           generator: s.generator || { burnRate: 0.86, warmupHours: 1.0, cleanupHours: 0.5, truckMpg: 12, runtimeMultiplierDefault: 1.15 },
-          additionalJobCostMarkupPct: s.additionalJobCostMarkupPct ?? 30,
+          fuelMarkupPercent: s.fuelMarkupPercent ?? legacyMarkup,
+          wasteDisposalMarkupPercent: s.wasteDisposalMarkupPercent ?? legacyMarkup,
+          equipmentRentalMarkupPercent: s.equipmentRentalMarkupPercent ?? legacyMarkup,
           jobberDescriptions: s.jobberDescriptions || {},
           labor: s.labor || { laborRate: 65, laborMarkup: 40 },
           project: s.project || { travelDistance: 50, travelRate: 0.70, wasteDisposal: 50, equipmentRental: 0 },
@@ -250,7 +534,9 @@ export default function AdminConsole({ onBack }) {
           foamTypes: s.foamTypes || prev.foamTypes,
           coatingTypes: s.coatingTypes || prev.coatingTypes,
           generator: s.generator || prev.generator,
-          additionalJobCostMarkupPct: s.additionalJobCostMarkupPct ?? prev.additionalJobCostMarkupPct,
+          fuelMarkupPercent: s.fuelMarkupPercent ?? prev.fuelMarkupPercent,
+          wasteDisposalMarkupPercent: s.wasteDisposalMarkupPercent ?? prev.wasteDisposalMarkupPercent,
+          equipmentRentalMarkupPercent: s.equipmentRentalMarkupPercent ?? prev.equipmentRentalMarkupPercent,
           jobberDescriptions: s.jobberDescriptions || prev.jobberDescriptions,
         }));
         setSaveSuccess('Settings saved successfully');
@@ -482,11 +768,24 @@ export default function AdminConsole({ onBack }) {
                 </div>
               </div>
             </SectionCard>
-            <SectionCard title="Additional Job Cost Markup">
-              <div className="max-w-xs">
-                <label className={labelClass}>Markup on Fuel, Waste Disposal & Equipment Rental (%)</label>
-                <input type="number" step="0.1" min="0" value={settings.additionalJobCostMarkupPct ?? 30} onChange={(e) => setSettings(prev => ({ ...prev, additionalJobCostMarkupPct: parseFloat(e.target.value) || 0 }))} className={inputClass} />
-                <p className="text-xs text-gray-400 mt-1">Applied to total of fuel + waste + equipment costs</p>
+            <SectionCard title="Job Cost Markups">
+              <p className="text-sm text-gray-500 mb-4">Set separate markup percentages for each additional job cost. These are applied independently — not combined.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className={labelClass}>Fuel Markup (%)</label>
+                  <input type="number" step="0.1" min="0" value={settings.fuelMarkupPercent ?? 30} onChange={(e) => setSettings(prev => ({ ...prev, fuelMarkupPercent: parseFloat(e.target.value) || 0 }))} className={inputClass} />
+                  <p className="text-xs text-gray-400 mt-1">Applied to travel + generator fuel</p>
+                </div>
+                <div>
+                  <label className={labelClass}>Waste Disposal Markup (%)</label>
+                  <input type="number" step="0.1" min="0" value={settings.wasteDisposalMarkupPercent ?? 30} onChange={(e) => setSettings(prev => ({ ...prev, wasteDisposalMarkupPercent: parseFloat(e.target.value) || 0 }))} className={inputClass} />
+                  <p className="text-xs text-gray-400 mt-1">Applied to waste disposal cost</p>
+                </div>
+                <div>
+                  <label className={labelClass}>Equipment Rental Markup (%)</label>
+                  <input type="number" step="0.1" min="0" value={settings.equipmentRentalMarkupPercent ?? 30} onChange={(e) => setSettings(prev => ({ ...prev, equipmentRentalMarkupPercent: parseFloat(e.target.value) || 0 }))} className={inputClass} />
+                  <p className="text-xs text-gray-400 mt-1">Applied to equipment rental cost</p>
+                </div>
               </div>
             </SectionCard>
           </div>
