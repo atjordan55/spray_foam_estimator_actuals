@@ -28,7 +28,7 @@ const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, total
   </div>
 );
 
-const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, closedCellGallons, closedCellSets, coatingGallons = 0, coatingContainers = 0, totalBaseCost, totalMarkup, totalCost }) => (
+const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, closedCellGallons, closedCellSets, coatingBreakdown = [], totalBaseCost, totalMarkup, totalCost }) => (
   <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
     <h5 className="font-semibold text-blue-800 mb-3">Area Summary</h5>
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
@@ -40,9 +40,9 @@ const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, clo
       {(closedCellGallons > 0 || closedCellSets > 0) && (
         <div><span className="font-medium">Closed Cell:</span> {closedCellGallons.toFixed(1)} gallons ({closedCellSets.toFixed(2)} sets)</div>
       )}
-      {(coatingGallons > 0 || coatingContainers > 0) && (
-        <div><span className="font-medium">Coating:</span> {coatingGallons.toFixed(1)} gallons ({coatingContainers} containers)</div>
-      )}
+      {coatingBreakdown.map(([name, info]) => (
+        <div key={name}><span className="font-medium">{name}:</span> {info.gallons.toFixed(1)} gallons ({info.containers} containers)</div>
+      ))}
       <div><span className="font-medium">Base Cost:</span> ${totalBaseCost.toFixed(2)}</div>
       <div><span className="font-medium">Markup:</span> ${totalMarkup.toFixed(2)}</div>
       <div><span className="font-medium text-blue-800">Total:</span> <span className="font-semibold text-blue-800">${totalCost.toFixed(2)}</span></div>
@@ -155,7 +155,7 @@ const getDefaultState = () => ({
     actualLaborHours: null,
     actualOpenGallons: null,
     actualClosedGallons: null,
-    actualCoatingGallons: null,
+    actualCoatingGallonsByType: {},
     actualFuelCost: null,
     actualWasteDisposal: null,
     actualEquipmentRental: null
@@ -455,6 +455,46 @@ export default function SprayFoamEstimator({ onAdmin }) {
     const markupAmount = Math.round(baseMaterialCost * (markupPct / 100) * 100) / 100;
     const totalCost = Math.round((baseMaterialCost + markupAmount) * 100) / 100;
     return { containers, baseMaterialCost, markupAmount, totalCost, costPerContainer, pricePerContainer, coverage };
+  };
+
+  // Build per-coating-type breakdown across given areas. Returns Map<typeName, info>.
+  const buildCoatingTypeBreakdown = (areas) => {
+    const map = new Map();
+    areas.forEach(area => {
+      const sqft = calculateEffectiveSqFt(area);
+      area.foamApplications.forEach(app => {
+        if (app.applicationType !== "Coating") return;
+        const cc = calculateCoatingApplicationCost(app, sqft);
+        const name = (app.coatingTypeName && app.coatingTypeName.trim()) || "Coating";
+        const existing = map.get(name) || {
+          gallonsNeeded: 0,
+          containers: 0,
+          baseMaterialCost: 0,
+          markupAmount: 0,
+          containerGallons: parseFloat(app.containerGallons) || 0,
+          pricePerContainer: cc.pricePerContainer || 0,
+        };
+        existing.gallonsNeeded += cc.coverage.gallonsNeeded || 0;
+        existing.containers += cc.containers || 0;
+        existing.baseMaterialCost += cc.baseMaterialCost;
+        existing.markupAmount += cc.markupAmount;
+        if (parseFloat(app.containerGallons) > 0) existing.containerGallons = parseFloat(app.containerGallons);
+        if (cc.pricePerContainer > 0) existing.pricePerContainer = cc.pricePerContainer;
+        map.set(name, existing);
+      });
+    });
+    return map;
+  };
+
+  const handleActualCoatingGallonsChange = (typeName, value) => {
+    const parsed = parseFloat(value);
+    setActuals(prev => ({
+      ...prev,
+      actualCoatingGallonsByType: {
+        ...(prev.actualCoatingGallonsByType || {}),
+        [typeName]: isNaN(parsed) ? null : Math.max(0, parsed),
+      },
+    }));
   };
 
   const validateAndSet = (value, setter, key, currentState) => {
@@ -949,7 +989,8 @@ export default function SprayFoamEstimator({ onAdmin }) {
       actualLaborHours: data.actuals?.actualLaborHours ?? null,
       actualOpenGallons: data.actuals?.actualOpenGallons ?? null,
       actualClosedGallons: data.actuals?.actualClosedGallons ?? null,
-      actualCoatingGallons: data.actuals?.actualCoatingGallons ?? null,
+      actualCoatingGallonsByType: data.actuals?.actualCoatingGallonsByType
+        ?? (data.actuals?.actualCoatingGallons != null ? { Coating: data.actuals.actualCoatingGallons } : {}),
       actualFuelCost: data.actuals?.actualFuelCost ?? null,
       actualWasteDisposal: data.actuals?.actualWasteDisposal ?? null,
       actualEquipmentRental: data.actuals?.actualEquipmentRental ?? null
@@ -1132,7 +1173,6 @@ export default function SprayFoamEstimator({ onAdmin }) {
   let materialMarkupAmount = 0;
   let weightedOpenCostPerGallon = 0;
   let weightedClosedCostPerGallon = 0;
-  let weightedCoatingContainerGallons = 0;
   let totalCoatingBaseCost = 0;
   let totalCoatingMarkupAmount = 0;
 
@@ -1150,8 +1190,6 @@ export default function SprayFoamEstimator({ onAdmin }) {
         totalCoatingMarkupAmount += markupAmount;
         totalCoatingGallons += cc.coverage.gallonsNeeded || 0;
         totalCoatingContainers += cc.containers || 0;
-        const containerGals = parseFloat(app.containerGallons) || 0;
-        weightedCoatingContainerGallons += containerGals * (cc.coverage.gallonsNeeded || 0);
         baseMaterialCost += cost;
         materialMarkupAmount += markupAmount;
       } else {
@@ -1174,8 +1212,10 @@ export default function SprayFoamEstimator({ onAdmin }) {
 
   const openCostPerGallon = totalGallons.open > 0 ? weightedOpenCostPerGallon / totalGallons.open : 0;
   const closedCostPerGallon = totalGallons.closed > 0 ? weightedClosedCostPerGallon / totalGallons.closed : 0;
-  const avgCoatingContainerGallons = totalCoatingGallons > 0 ? weightedCoatingContainerGallons / totalCoatingGallons : 0;
-  const avgCoatingPricePerContainer = totalCoatingContainers > 0 ? totalCoatingBaseCost / totalCoatingContainers : 0;
+
+  // Per-coating-type breakdown for display + per-type actuals
+  const coatingBreakdown = buildCoatingTypeBreakdown(sprayAreas);
+  const coatingBreakdownEntries = Array.from(coatingBreakdown.entries());
 
   // Fuel cost: travel + generator
   const travelFuelCost = Math.round(globalInputs.travelDistance * globalInputs.travelRate * 100) / 100;
@@ -1230,15 +1270,19 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const effectiveActualLaborHours = actuals.actualLaborHours ?? globalInputs.laborHours;
   const effectiveActualOpenGallons = actuals.actualOpenGallons ?? totalGallons.open;
   const effectiveActualClosedGallons = actuals.actualClosedGallons ?? totalGallons.closed;
-  const effectiveActualCoatingGallons = actuals.actualCoatingGallons ?? totalCoatingGallons;
   const effectiveActualFuelCost = actuals.actualFuelCost ?? fuelCost;
   const effectiveActualWasteDisposal = actuals.actualWasteDisposal ?? globalInputs.wasteDisposal;
   const effectiveActualEquipmentRental = actuals.actualEquipmentRental ?? globalInputs.equipmentRental;
 
-  const actualCoatingContainers = avgCoatingContainerGallons > 0
-    ? Math.ceil(effectiveActualCoatingGallons / avgCoatingContainerGallons)
-    : 0;
-  const actualCoatingMaterialCost = actualCoatingContainers * avgCoatingPricePerContainer;
+  // Per-coating-type actual material cost: ceil(actualGallons / containerGallons) × pricePerContainer
+  let actualCoatingMaterialCost = 0;
+  coatingBreakdownEntries.forEach(([name, info]) => {
+    const userActual = actuals.actualCoatingGallonsByType?.[name];
+    const effectiveGallons = (userActual !== undefined && userActual !== null) ? userActual : info.gallonsNeeded;
+    const containers = info.containerGallons > 0 ? Math.ceil(effectiveGallons / info.containerGallons) : 0;
+    actualCoatingMaterialCost += containers * info.pricePerContainer;
+  });
+  actualCoatingMaterialCost = Math.round(actualCoatingMaterialCost * 100) / 100;
   const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon + actualCoatingMaterialCost) * 100) / 100;
   const actualLaborCost = Math.round(effectiveActualLaborHours * globalInputs.manualLaborRate * 100) / 100;
   const actualWasteDisposalBase = parseFloat(effectiveActualWasteDisposal) || 0;
@@ -2181,16 +2225,18 @@ export default function SprayFoamEstimator({ onAdmin }) {
                           let totalMarkup = 0;
                           let totalCost = 0;
                           
-                          let areaCoatingGallons = 0;
-                          let areaCoatingContainers = 0;
+                          const areaCoatingMap = new Map();
                           area.foamApplications.forEach(foamApp => {
                             if (foamApp.applicationType === "Coating") {
                               const coatingCalcs = calculateCoatingApplicationCost(foamApp, areaEffectiveSqFt);
                               totalBaseCost += coatingCalcs.baseMaterialCost;
                               totalMarkup += coatingCalcs.markupAmount;
                               totalCost += coatingCalcs.totalCost;
-                              areaCoatingGallons += coatingCalcs.coverage.gallonsNeeded || 0;
-                              areaCoatingContainers += coatingCalcs.containers || 0;
+                              const coatingName = (foamApp.coatingTypeName && foamApp.coatingTypeName.trim()) || "Coating";
+                              const prev = areaCoatingMap.get(coatingName) || { gallons: 0, containers: 0 };
+                              prev.gallons += coatingCalcs.coverage.gallonsNeeded || 0;
+                              prev.containers += coatingCalcs.containers || 0;
+                              areaCoatingMap.set(coatingName, prev);
                               return;
                             }
                             const foamCalcs = calculateFoamApplicationCost(area, foamApp);
@@ -2216,8 +2262,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
                               openCellSets={openCellSets}
                               closedCellGallons={closedCellGallons}
                               closedCellSets={closedCellSets}
-                              coatingGallons={areaCoatingGallons}
-                              coatingContainers={areaCoatingContainers}
+                              coatingBreakdown={Array.from(areaCoatingMap.entries())}
                               totalBaseCost={totalBaseCost}
                               totalMarkup={totalMarkup}
                               totalCost={totalCost}
@@ -2343,38 +2388,49 @@ export default function SprayFoamEstimator({ onAdmin }) {
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Actual Coating Gallons</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={actualsFocused.coatingGallons 
-                      ? actualsInputs.coatingGallons 
-                      : (actuals.actualCoatingGallons !== null 
-                          ? (actuals.actualCoatingGallons === 0 ? "" : actuals.actualCoatingGallons.toFixed(1)) 
-                          : (totalCoatingGallons === 0 ? "" : totalCoatingGallons.toFixed(1)))}
-                    onChange={(e) => setActualsInputs(prev => ({ ...prev, coatingGallons: e.target.value }))}
-                    onFocus={() => {
-                      setActualsFocused(prev => ({ ...prev, coatingGallons: true }));
-                      const currentVal = actuals.actualCoatingGallons !== null ? actuals.actualCoatingGallons : totalCoatingGallons;
-                      setActualsInputs(prev => ({ ...prev, coatingGallons: currentVal > 0 ? currentVal.toFixed(1) : "" }));
-                    }}
-                    onBlur={() => {
-                      setActualsFocused(prev => ({ ...prev, coatingGallons: false }));
-                      if (actualsInputs.coatingGallons !== undefined && actualsInputs.coatingGallons !== "") {
-                        handleActualsChange("actualCoatingGallons", actualsInputs.coatingGallons);
-                      }
-                      setActualsInputs(prev => {
-                        const updated = { ...prev };
-                        delete updated.coatingGallons;
-                        return updated;
-                      });
-                    }}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
               </div>
+              {coatingBreakdownEntries.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                  {coatingBreakdownEntries.map(([name, info]) => {
+                    const inputKey = `coatingGallons_${name}`;
+                    const stored = actuals.actualCoatingGallonsByType?.[name];
+                    const fallback = info.gallonsNeeded;
+                    return (
+                      <div key={name}>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Actual {name} Gallons</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={actualsFocused[inputKey]
+                            ? (actualsInputs[inputKey] ?? "")
+                            : (stored !== undefined && stored !== null
+                                ? (stored === 0 ? "" : stored.toFixed(1))
+                                : (fallback === 0 ? "" : fallback.toFixed(1)))}
+                          onChange={(e) => setActualsInputs(prev => ({ ...prev, [inputKey]: e.target.value }))}
+                          onFocus={() => {
+                            setActualsFocused(prev => ({ ...prev, [inputKey]: true }));
+                            const currentVal = (stored !== undefined && stored !== null) ? stored : fallback;
+                            setActualsInputs(prev => ({ ...prev, [inputKey]: currentVal > 0 ? currentVal.toFixed(1) : "" }));
+                          }}
+                          onBlur={() => {
+                            setActualsFocused(prev => ({ ...prev, [inputKey]: false }));
+                            if (actualsInputs[inputKey] !== undefined && actualsInputs[inputKey] !== "") {
+                              handleActualCoatingGallonsChange(name, actualsInputs[inputKey]);
+                            }
+                            setActualsInputs(prev => {
+                              const updated = { ...prev };
+                              delete updated[inputKey];
+                              return updated;
+                            });
+                          }}
+                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Actual Fuel Cost ($)</label>
@@ -2586,12 +2642,12 @@ export default function SprayFoamEstimator({ onAdmin }) {
                       <span className="text-gray-600">Closed Cell:</span>
                       <span>{totalGallons.closed.toFixed(1)} gallons ({totalSets.closed.toFixed(2)} sets)</span>
                     </div>
-                    {(totalCoatingGallons > 0 || totalCoatingContainers > 0) && (
-                      <div className="flex justify-between py-1">
-                        <span className="text-gray-600">Coating:</span>
-                        <span>{totalCoatingGallons.toFixed(1)} gallons ({totalCoatingContainers} containers)</span>
+                    {coatingBreakdownEntries.map(([name, info]) => (
+                      <div key={name} className="flex justify-between py-1">
+                        <span className="text-gray-600">{name}:</span>
+                        <span>{info.gallonsNeeded.toFixed(1)} gallons ({info.containers} containers)</span>
                       </div>
-                    )}
+                    ))}
                     <hr className="my-3" />
                     <div className="flex justify-between py-1">
                       <span className="text-gray-600">Base Material Cost:</span>
