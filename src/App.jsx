@@ -450,9 +450,9 @@ export default function SprayFoamEstimator({ onAdmin }) {
       ? (coatingApp.numContainers || 0)
       : coverage.containersNeeded;
     const baseMaterialCost = Math.round(pricePerContainer * containers * 100) / 100;
-    const pricePerSqFt = parseFloat(coatingApp.defaultPricePerSqFt) || 0;
-    const totalCost = Math.round(pricePerSqFt * sqFt * 100) / 100;
-    const markupAmount = Math.round((totalCost - baseMaterialCost) * 100) / 100;
+    const markupPct = parseFloat(coatingApp.materialMarkup) || 0;
+    const markupAmount = Math.round(baseMaterialCost * (markupPct / 100) * 100) / 100;
+    const totalCost = Math.round((baseMaterialCost + markupAmount) * 100) / 100;
     return { containers, baseMaterialCost, markupAmount, totalCost, costPerContainer, pricePerContainer, coverage };
   };
 
@@ -647,10 +647,16 @@ export default function SprayFoamEstimator({ onAdmin }) {
   };
 
   const computeCoatingBaseCostPerSqFt = (coatingApp, area) => {
-    const cov = calculateCoatingCoverage(coatingApp, calculateEffectiveSqFt(area));
+    const sqFt = calculateEffectiveSqFt(area);
+    if (!sqFt) return 0;
+    const cov = calculateCoatingCoverage(coatingApp, sqFt);
     const matCostPct = coatingApp.materialCostPct ?? 20;
-    const adjCost = (parseFloat(coatingApp.materialCostPerContainer) || 0) * (1 + matCostPct / 100);
-    return cov.sqFtPerContainer > 0 ? adjCost / cov.sqFtPerContainer : 0;
+    const pricePerContainer = (parseFloat(coatingApp.materialCostPerContainer) || 0) * (1 + matCostPct / 100);
+    const calcMethod = coatingApp.calculationMethod || 'manualOverride';
+    const containers = (calcMethod === 'manualOverride')
+      ? (coatingApp.numContainers || 0)
+      : cov.containersNeeded;
+    return (pricePerContainer * containers) / sqFt;
   };
 
   const updateCoatingApplication = (areaIndex, foamIndex, key, value) => {
