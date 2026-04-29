@@ -439,19 +439,20 @@ export default function SprayFoamEstimator({ onAdmin }) {
   };
 
   const calculateCoatingApplicationCost = (coatingApp, areaSqFt = 0) => {
+    const sqFt = parseFloat(areaSqFt) || 0;
     const materialCostPct = coatingApp.materialCostPct ?? 20;
-    const materialCostPerContainer = coatingApp.materialCostPerContainer * (1 + materialCostPct / 100);
+    const adjCostPerContainer = (parseFloat(coatingApp.materialCostPerContainer) || 0) * (1 + materialCostPct / 100);
     const calcMethod = coatingApp.calculationMethod || 'manualOverride';
     const coverage = calculateCoatingCoverage(coatingApp, areaSqFt);
-    // Auto-calc'd containers when method is set; manual mode falls back to legacy numContainers
     const containers = (calcMethod === 'manualOverride')
       ? (coatingApp.numContainers || 0)
       : coverage.containersNeeded;
-    const baseMaterialCost = Math.round(materialCostPerContainer * containers * 100) / 100;
-    const pricePerContainer = coatingApp.pricePerContainer || 0;
-    const totalCost = Math.round(pricePerContainer * containers * 100) / 100;
+    const baseMaterialCost = Math.round(adjCostPerContainer * containers * 100) / 100;
+    const pricePerSqFt = parseFloat(coatingApp.defaultPricePerSqFt) || 0;
+    const pricePerContainer = Math.round(pricePerSqFt * coverage.sqFtPerContainer * 100) / 100;
+    const totalCost = Math.round(pricePerSqFt * sqFt * 100) / 100;
     const markupAmount = Math.round((totalCost - baseMaterialCost) * 100) / 100;
-    return { containers, baseMaterialCost, markupAmount, totalCost, pricePerContainer, coverage };
+    return { containers, baseMaterialCost, markupAmount, totalCost, pricePerContainer, adjCostPerContainer, coverage };
   };
 
   const validateAndSet = (value, setter, key, currentState) => {
@@ -644,9 +645,17 @@ export default function SprayFoamEstimator({ onAdmin }) {
     setSprayAreas(updated);
   };
 
+  const computeCoatingBaseCostPerSqFt = (coatingApp, area) => {
+    const cov = calculateCoatingCoverage(coatingApp, calculateEffectiveSqFt(area));
+    const matCostPct = coatingApp.materialCostPct ?? 20;
+    const adjCost = (parseFloat(coatingApp.materialCostPerContainer) || 0) * (1 + matCostPct / 100);
+    return cov.sqFtPerContainer > 0 ? adjCost / cov.sqFtPerContainer : 0;
+  };
+
   const updateCoatingApplication = (areaIndex, foamIndex, key, value) => {
     const updated = [...sprayAreas];
-    const coatingApp = updated[areaIndex].foamApplications[foamIndex];
+    const area = updated[areaIndex];
+    const coatingApp = area.foamApplications[foamIndex];
     if (key === "coatingTypeId") {
       const coatingTypes = adminSettings?.coatingTypes || [];
       const ct = coatingTypes.find(c => c.id === value);
@@ -666,11 +675,31 @@ export default function SprayFoamEstimator({ onAdmin }) {
         coatingApp.maxSinglePassWetMils = ct.maxSinglePassWetMils ?? coatingApp.maxSinglePassWetMils;
         coatingApp.solidsByVolumePercent = ct.solidsByVolumePercent ?? coatingApp.solidsByVolumePercent;
         coatingApp.pricePerContainer = ct.defaultPricePerContainer ?? coatingApp.pricePerContainer;
-        coatingApp.defaultPricePerSqFt = ct.defaultPricePerSqFt ?? coatingApp.defaultPricePerSqFt;
+        // Reconcile $/Sq Ft from markup % + base cost so the two stay in sync
+        const baseCostPerSqFt = computeCoatingBaseCostPerSqFt(coatingApp, area);
+        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + (parseFloat(coatingApp.materialMarkup) || 0) / 100) * 1000) / 1000;
+      }
+    } else if (key === "materialMarkup" || key === "defaultPricePerSqFt") {
+      const parsed = parseFloat(value);
+      const newVal = isNaN(parsed) ? 0 : Math.max(0, parsed);
+      const baseCostPerSqFt = computeCoatingBaseCostPerSqFt(coatingApp, area);
+      if (key === "materialMarkup") {
+        coatingApp.materialMarkup = newVal;
+        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + newVal / 100) * 1000) / 1000;
+      } else {
+        coatingApp.defaultPricePerSqFt = newVal;
+        coatingApp.materialMarkup = baseCostPerSqFt > 0
+          ? Math.max(0, Math.round(((newVal / baseCostPerSqFt) - 1) * 100 * 100) / 100)
+          : 0;
       }
     } else {
       const parsed = parseFloat(value);
       coatingApp[key] = isNaN(parsed) ? 0 : Math.max(0, parsed);
+      // If a parameter that affects baseCostPerSqFt changes, keep $/Sq Ft locked to current markup
+      if (["materialCostPerContainer", "containerGallons", "usableGallonsPerSet", "defaultThickness", "sqFtPerGallon"].includes(key)) {
+        const baseCostPerSqFt = computeCoatingBaseCostPerSqFt(coatingApp, area);
+        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + (parseFloat(coatingApp.materialMarkup) || 0) / 100) * 1000) / 1000;
+      }
     }
     setSprayAreas(updated);
   };
@@ -1821,10 +1850,6 @@ export default function SprayFoamEstimator({ onAdmin }) {
                               const cov = coatingCalcs.coverage;
                               const coatingTypes = adminSettings?.coatingTypes || [];
                               const showWetMil = (foamApp.calculationMethod === 'wetFilmThickness');
-                              const matCostPct = foamApp.materialCostPct ?? 20;
-                              const adjMatCostPerContainer = (parseFloat(foamApp.materialCostPerContainer) || 0) * (1 + matCostPct / 100);
-                              const baseCostPerSqFt = cov.sqFtPerContainer > 0 ? adjMatCostPerContainer / cov.sqFtPerContainer : 0;
-                              const computedPricePerSqFt = baseCostPerSqFt * (1 + (parseFloat(foamApp.materialMarkup) || 0) / 100);
                               return (
                                 <div key={foamApp.id || foamIndex} className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
                                   <div className="flex justify-between items-center mb-3">
@@ -1891,16 +1916,22 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                       </div>
                                     )}
                                     <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Cost/Container ($)</label>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Cost/Container ($)
+                                        <Tooltip text="Auto-calculated material cost per container (includes material cost adjustment)." />
+                                      </label>
                                       <input
-                                        type="number" step="0.01" min="0"
-                                        value={foamApp.materialCostPerContainer || ""}
-                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'materialCostPerContainer', e.target.value)}
-                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        type="text"
+                                        readOnly
+                                        value={coatingCalcs.adjCostPerContainer > 0 ? `$${coatingCalcs.adjCostPerContainer.toFixed(2)}` : '—'}
+                                        className="w-full border border-gray-200 bg-gray-100 text-gray-600 p-2 rounded-lg cursor-not-allowed"
                                       />
                                     </div>
                                     <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Material Markup (%)</label>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Material Markup (%)
+                                        <Tooltip text="Editable. Changing this updates Price ($/Sq Ft) and the live totals below." />
+                                      </label>
                                       <input
                                         type="number" step="0.01" min="0"
                                         value={foamApp.materialMarkup || ""}
@@ -1909,24 +1940,27 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                       />
                                     </div>
                                     <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Price/Container ($)</label>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Price/Container ($)
+                                        <Tooltip text="Auto-calculated from Price ($/Sq Ft) × Sq Ft per Container." />
+                                      </label>
                                       <input
-                                        type="number" step="0.01" min="0"
-                                        value={foamApp.pricePerContainer || ""}
-                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'pricePerContainer', e.target.value)}
-                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        type="text"
+                                        readOnly
+                                        value={coatingCalcs.pricePerContainer > 0 ? `$${coatingCalcs.pricePerContainer.toFixed(2)}` : '—'}
+                                        className="w-full border border-gray-200 bg-gray-100 text-gray-600 p-2 rounded-lg cursor-not-allowed"
                                       />
                                     </div>
                                     <div>
                                       <label className="block text-sm font-medium text-gray-700 mb-1">
                                         Price ($/Sq Ft)
-                                        <Tooltip text="Auto-calculated from material cost ÷ sq ft per container, then adjusted by Material Markup %." />
+                                        <Tooltip text="Editable. Changing this updates Material Markup % and the live totals below." />
                                       </label>
                                       <input
-                                        type="text"
-                                        readOnly
-                                        value={computedPricePerSqFt > 0 ? `$${computedPricePerSqFt.toFixed(3)}` : '—'}
-                                        className="w-full border border-gray-200 bg-gray-100 text-gray-600 p-2 rounded-lg cursor-not-allowed"
+                                        type="number" step="0.001" min="0"
+                                        value={foamApp.defaultPricePerSqFt || ""}
+                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'defaultPricePerSqFt', e.target.value)}
+                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                       />
                                     </div>
                                   </div>
