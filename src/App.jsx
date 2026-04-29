@@ -1132,7 +1132,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
   let materialMarkupAmount = 0;
   let weightedOpenCostPerGallon = 0;
   let weightedClosedCostPerGallon = 0;
-  let weightedCoatingCostPerGallon = 0;
+  let weightedCoatingContainerGallons = 0;
   let totalCoatingBaseCost = 0;
   let totalCoatingMarkupAmount = 0;
 
@@ -1151,10 +1151,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
         totalCoatingGallons += cc.coverage.gallonsNeeded || 0;
         totalCoatingContainers += cc.containers || 0;
         const containerGals = parseFloat(app.containerGallons) || 0;
-        if (containerGals > 0) {
-          const loadedCostPerGallon = cc.pricePerContainer / containerGals;
-          weightedCoatingCostPerGallon += loadedCostPerGallon * (cc.coverage.gallonsNeeded || 0);
-        }
+        weightedCoatingContainerGallons += containerGals * (cc.coverage.gallonsNeeded || 0);
         baseMaterialCost += cost;
         materialMarkupAmount += markupAmount;
       } else {
@@ -1177,7 +1174,8 @@ export default function SprayFoamEstimator({ onAdmin }) {
 
   const openCostPerGallon = totalGallons.open > 0 ? weightedOpenCostPerGallon / totalGallons.open : 0;
   const closedCostPerGallon = totalGallons.closed > 0 ? weightedClosedCostPerGallon / totalGallons.closed : 0;
-  const coatingCostPerGallon = totalCoatingGallons > 0 ? weightedCoatingCostPerGallon / totalCoatingGallons : 0;
+  const avgCoatingContainerGallons = totalCoatingGallons > 0 ? weightedCoatingContainerGallons / totalCoatingGallons : 0;
+  const avgCoatingPricePerContainer = totalCoatingContainers > 0 ? totalCoatingBaseCost / totalCoatingContainers : 0;
 
   // Fuel cost: travel + generator
   const travelFuelCost = Math.round(globalInputs.travelDistance * globalInputs.travelRate * 100) / 100;
@@ -1237,7 +1235,11 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const effectiveActualWasteDisposal = actuals.actualWasteDisposal ?? globalInputs.wasteDisposal;
   const effectiveActualEquipmentRental = actuals.actualEquipmentRental ?? globalInputs.equipmentRental;
 
-  const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon + effectiveActualCoatingGallons * coatingCostPerGallon) * 100) / 100;
+  const actualCoatingContainers = avgCoatingContainerGallons > 0
+    ? Math.ceil(effectiveActualCoatingGallons / avgCoatingContainerGallons)
+    : 0;
+  const actualCoatingMaterialCost = actualCoatingContainers * avgCoatingPricePerContainer;
+  const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon + actualCoatingMaterialCost) * 100) / 100;
   const actualLaborCost = Math.round(effectiveActualLaborHours * globalInputs.manualLaborRate * 100) / 100;
   const actualWasteDisposalBase = parseFloat(effectiveActualWasteDisposal) || 0;
   const actualEquipmentRentalBase = parseFloat(effectiveActualEquipmentRental) || 0;
