@@ -1913,6 +1913,15 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                         className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                       />
                                     </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">Price ($/Sq Ft)</label>
+                                      <input
+                                        type="number" step="0.01" min="0"
+                                        value={foamApp.defaultPricePerSqFt || ""}
+                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'defaultPricePerSqFt', e.target.value)}
+                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      />
+                                    </div>
                                   </div>
                                   {cov.wetMilWarning && (
                                     <div className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 p-2 rounded">
