@@ -155,6 +155,7 @@ const getDefaultState = () => ({
     actualLaborHours: null,
     actualOpenGallons: null,
     actualClosedGallons: null,
+    actualCoatingGallons: null,
     actualFuelCost: null,
     actualWasteDisposal: null,
     actualEquipmentRental: null
@@ -948,6 +949,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
       actualLaborHours: data.actuals?.actualLaborHours ?? null,
       actualOpenGallons: data.actuals?.actualOpenGallons ?? null,
       actualClosedGallons: data.actuals?.actualClosedGallons ?? null,
+      actualCoatingGallons: data.actuals?.actualCoatingGallons ?? null,
       actualFuelCost: data.actuals?.actualFuelCost ?? null,
       actualWasteDisposal: data.actuals?.actualWasteDisposal ?? null,
       actualEquipmentRental: data.actuals?.actualEquipmentRental ?? null
@@ -1130,6 +1132,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
   let materialMarkupAmount = 0;
   let weightedOpenCostPerGallon = 0;
   let weightedClosedCostPerGallon = 0;
+  let weightedCoatingCostPerGallon = 0;
   let totalCoatingBaseCost = 0;
   let totalCoatingMarkupAmount = 0;
 
@@ -1147,6 +1150,11 @@ export default function SprayFoamEstimator({ onAdmin }) {
         totalCoatingMarkupAmount += markupAmount;
         totalCoatingGallons += cc.coverage.gallonsNeeded || 0;
         totalCoatingContainers += cc.containers || 0;
+        const containerGals = parseFloat(app.containerGallons) || 0;
+        if (containerGals > 0) {
+          const loadedCostPerGallon = cc.pricePerContainer / containerGals;
+          weightedCoatingCostPerGallon += loadedCostPerGallon * (cc.coverage.gallonsNeeded || 0);
+        }
         baseMaterialCost += cost;
         materialMarkupAmount += markupAmount;
       } else {
@@ -1169,6 +1177,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
 
   const openCostPerGallon = totalGallons.open > 0 ? weightedOpenCostPerGallon / totalGallons.open : 0;
   const closedCostPerGallon = totalGallons.closed > 0 ? weightedClosedCostPerGallon / totalGallons.closed : 0;
+  const coatingCostPerGallon = totalCoatingGallons > 0 ? weightedCoatingCostPerGallon / totalCoatingGallons : 0;
 
   // Fuel cost: travel + generator
   const travelFuelCost = Math.round(globalInputs.travelDistance * globalInputs.travelRate * 100) / 100;
@@ -1223,11 +1232,12 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const effectiveActualLaborHours = actuals.actualLaborHours ?? globalInputs.laborHours;
   const effectiveActualOpenGallons = actuals.actualOpenGallons ?? totalGallons.open;
   const effectiveActualClosedGallons = actuals.actualClosedGallons ?? totalGallons.closed;
+  const effectiveActualCoatingGallons = actuals.actualCoatingGallons ?? totalCoatingGallons;
   const effectiveActualFuelCost = actuals.actualFuelCost ?? fuelCost;
   const effectiveActualWasteDisposal = actuals.actualWasteDisposal ?? globalInputs.wasteDisposal;
   const effectiveActualEquipmentRental = actuals.actualEquipmentRental ?? globalInputs.equipmentRental;
 
-  const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon) * 100) / 100;
+  const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon + effectiveActualCoatingGallons * coatingCostPerGallon) * 100) / 100;
   const actualLaborCost = Math.round(effectiveActualLaborHours * globalInputs.manualLaborRate * 100) / 100;
   const actualWasteDisposalBase = parseFloat(effectiveActualWasteDisposal) || 0;
   const actualEquipmentRentalBase = parseFloat(effectiveActualEquipmentRental) || 0;
@@ -2237,7 +2247,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
               {!actualsConfirmed && (
                 <p className="text-red-600 font-medium mb-4">Please confirm that actuals are correct</p>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Actual Labor Hours</label>
                   <input
@@ -2325,6 +2335,37 @@ export default function SprayFoamEstimator({ onAdmin }) {
                       setActualsInputs(prev => {
                         const updated = { ...prev };
                         delete updated.closedGallons;
+                        return updated;
+                      });
+                    }}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Actual Coating Gallons</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={actualsFocused.coatingGallons 
+                      ? actualsInputs.coatingGallons 
+                      : (actuals.actualCoatingGallons !== null 
+                          ? (actuals.actualCoatingGallons === 0 ? "" : actuals.actualCoatingGallons.toFixed(1)) 
+                          : (totalCoatingGallons === 0 ? "" : totalCoatingGallons.toFixed(1)))}
+                    onChange={(e) => setActualsInputs(prev => ({ ...prev, coatingGallons: e.target.value }))}
+                    onFocus={() => {
+                      setActualsFocused(prev => ({ ...prev, coatingGallons: true }));
+                      const currentVal = actuals.actualCoatingGallons !== null ? actuals.actualCoatingGallons : totalCoatingGallons;
+                      setActualsInputs(prev => ({ ...prev, coatingGallons: currentVal > 0 ? currentVal.toFixed(1) : "" }));
+                    }}
+                    onBlur={() => {
+                      setActualsFocused(prev => ({ ...prev, coatingGallons: false }));
+                      if (actualsInputs.coatingGallons !== undefined && actualsInputs.coatingGallons !== "") {
+                        handleActualsChange("actualCoatingGallons", actualsInputs.coatingGallons);
+                      }
+                      setActualsInputs(prev => {
+                        const updated = { ...prev };
+                        delete updated.coatingGallons;
                         return updated;
                       });
                     }}
