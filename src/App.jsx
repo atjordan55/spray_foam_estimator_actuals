@@ -1821,6 +1821,10 @@ export default function SprayFoamEstimator({ onAdmin }) {
                               const cov = coatingCalcs.coverage;
                               const coatingTypes = adminSettings?.coatingTypes || [];
                               const showWetMil = (foamApp.calculationMethod === 'wetFilmThickness');
+                              const matCostPct = foamApp.materialCostPct ?? 20;
+                              const adjMatCostPerContainer = (parseFloat(foamApp.materialCostPerContainer) || 0) * (1 + matCostPct / 100);
+                              const baseCostPerSqFt = cov.sqFtPerContainer > 0 ? adjMatCostPerContainer / cov.sqFtPerContainer : 0;
+                              const computedPricePerSqFt = baseCostPerSqFt * (1 + (parseFloat(foamApp.materialMarkup) || 0) / 100);
                               return (
                                 <div key={foamApp.id || foamIndex} className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
                                   <div className="flex justify-between items-center mb-3">
@@ -1914,12 +1918,15 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                       />
                                     </div>
                                     <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Price ($/Sq Ft)</label>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Price ($/Sq Ft)
+                                        <Tooltip text="Auto-calculated from material cost ÷ sq ft per container, then adjusted by Material Markup %." />
+                                      </label>
                                       <input
-                                        type="number" step="0.01" min="0"
-                                        value={foamApp.defaultPricePerSqFt || ""}
-                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'defaultPricePerSqFt', e.target.value)}
-                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        type="text"
+                                        readOnly
+                                        value={computedPricePerSqFt > 0 ? `$${computedPricePerSqFt.toFixed(3)}` : '—'}
+                                        className="w-full border border-gray-200 bg-gray-100 text-gray-600 p-2 rounded-lg cursor-not-allowed"
                                       />
                                     </div>
                                   </div>
