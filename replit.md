@@ -23,7 +23,7 @@ Preferred communication style: Simple, everyday language.
 ### Admin Console
 - **Access**: Password-protected via `/#/admin`.
 - **Settings Storage**: Uses PostgreSQL `admin_settings` table to store configurable defaults and settings as JSONB.
-- **Configurable Items**: Foam types (including product details, cost, markup, waste factors), coating types (with various calculation methods), labor rates, project overheads (travel, waste, equipment), commission tier thresholds and rates, and company details.
+- **Configurable Items**: Foam types (product details, cost, markup, container/usable gallons per set), coating types (calculation methods, container type, usable gallons/set, implied waste %, default $/sq ft), labor rates, project overheads (travel, waste, equipment), commission tier thresholds and rates, and company details. Waste is embedded in usable-gallons-per-set rather than a separate factor.
 - **Estimator Integration**: Provides default settings to the estimator, with fallbacks to hardcoded values if API fetch fails.
 - **Job Cost Markups**: Features independent markup fields for fuel, waste disposal, and equipment rental.
 

@@ -172,12 +172,14 @@ async function initDatabase() {
           if (updated.notes === undefined) { updated.notes = ''; modified = true; }
           if (updated.containerType === undefined) { updated.containerType = '5 gallon bucket'; modified = true; }
           if (updated.containerGallons === undefined) { updated.containerGallons = 5; modified = true; }
+          if (updated.usableGallonsPerSet === undefined) { updated.usableGallonsPerSet = updated.containerGallons ?? 5; modified = true; }
           if (updated.calculationMethod === undefined) { updated.calculationMethod = 'manualOverride'; modified = true; }
           if (updated.thicknessType === undefined) { updated.thicknessType = 'none'; modified = true; }
           if (updated.defaultThickness === undefined) { updated.defaultThickness = 0; modified = true; }
           if (updated.sqFtPerGallon === undefined) { updated.sqFtPerGallon = 0; modified = true; }
           if (updated.solidsByVolumePercent === undefined) { updated.solidsByVolumePercent = 0; modified = true; }
           if (updated.maxSinglePassWetMils === undefined) { updated.maxSinglePassWetMils = 0; modified = true; }
+          if (updated.defaultPricePerSqFt === undefined) { updated.defaultPricePerSqFt = 0; modified = true; }
           if (modified) changed = true;
           return updated;
         });

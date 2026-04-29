@@ -183,10 +183,6 @@ function FoamTypeRow({ foam, index, onChange, onRemove }) {
           <input type="number" step="0.01" min="0" value={foam.materialMarkupPercent ?? foam.materialMarkup ?? ''} onChange={(e) => update('materialMarkupPercent', e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className={labelClass}>Waste Factor (%)</label>
-          <input type="number" step="0.1" min="0" value={foam.wasteFactorPercent ?? ''} onChange={(e) => update('wasteFactorPercent', e.target.value)} className={inputClass} />
-        </div>
-        <div>
           <label className={labelClass}>Default $/Sq Ft</label>
           <input type="number" step="0.01" min="0" value={foam.defaultPricePerSqFt || ''} onChange={(e) => update('defaultPricePerSqFt', e.target.value)} className={inputClass} />
         </div>
@@ -252,7 +248,8 @@ function CoatingTypeRow({ coating, index, onChange, onRemove }) {
   // Derived values
   const cost = parseFloat(coating.cost ?? coating.foamCostPerContainer ?? 0) || 0;
   const containerGallons = parseFloat(coating.containerGallons) || 0;
-  const wastePct = parseFloat(coating.wasteFactorPercent) || 0;
+  const usableGals = parseFloat(coating.usableGallonsPerSet) || 0;
+  const coatingImpliedWastePercent = containerGallons > 0 ? ((containerGallons - usableGals) / containerGallons) * 100 : 0;
   const markupPct = parseFloat(coating.materialMarkupPercent ?? coating.materialMarkup ?? 0) || 0;
   const calcMethod = coating.calculationMethod || 'manualOverride';
   const sqFt = parseFloat(sampleSqFt) || 0;
@@ -278,9 +275,10 @@ function CoatingTypeRow({ coating, index, onChange, onRemove }) {
     gallonsNeeded = 0;
   }
 
-  const gallonsWithWaste = gallonsNeeded * (1 + wastePct / 100);
-  const containersNeeded = (containerGallons > 0 && gallonsWithWaste > 0) ? Math.ceil(gallonsWithWaste / containerGallons) : 0;
-  const sqFtPerContainer = sqFtPerGallon * containerGallons;
+  // Use usable gallons (already accounts for waste) for container counts
+  const effectivePerContainer = usableGals > 0 ? usableGals : containerGallons;
+  const containersNeeded = (effectivePerContainer > 0 && gallonsNeeded > 0) ? Math.ceil(gallonsNeeded / effectivePerContainer) : 0;
+  const sqFtPerContainer = sqFtPerGallon * effectivePerContainer;
   const materialCost = containersNeeded * cost;
   const materialPriceWithMarkup = materialCost * (1 + markupPct / 100);
 
@@ -326,6 +324,14 @@ function CoatingTypeRow({ coating, index, onChange, onRemove }) {
         <div>
           <label className={labelClass}>Container Gallons (override)</label>
           <input type="number" step="0.1" min="0" value={coating.containerGallons ?? ''} onChange={(e) => update('containerGallons', e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Usable Gallons / Set</label>
+          <input type="number" step="0.1" min="0" value={coating.usableGallonsPerSet ?? ''} onChange={(e) => update('usableGallonsPerSet', e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Implied Waste (%)</label>
+          <input type="text" value={`${coatingImpliedWastePercent.toFixed(2)}%`} readOnly className={disabledInputClass} />
         </div>
       </div>
 
@@ -389,12 +395,12 @@ function CoatingTypeRow({ coating, index, onChange, onRemove }) {
           <input type="number" step="0.01" min="0" value={coating.materialMarkupPercent ?? coating.materialMarkup ?? ''} onChange={(e) => update('materialMarkupPercent', e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className={labelClass}>Waste Factor (%)</label>
-          <input type="number" step="0.1" min="0" value={coating.wasteFactorPercent ?? ''} onChange={(e) => update('wasteFactorPercent', e.target.value)} className={inputClass} />
-        </div>
-        <div>
           <label className={labelClass}>Default $/Container</label>
           <input type="number" step="0.01" min="0" value={coating.defaultPricePerContainer || ''} onChange={(e) => update('defaultPricePerContainer', e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Default $/Sq Ft</label>
+          <input type="number" step="0.01" min="0" value={coating.defaultPricePerSqFt ?? ''} onChange={(e) => update('defaultPricePerSqFt', e.target.value)} className={inputClass} />
         </div>
       </div>
 
@@ -419,12 +425,11 @@ function CoatingTypeRow({ coating, index, onChange, onRemove }) {
           )}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-blue-900">
             <div><span className="text-blue-700">Gallons Needed:</span> <strong>{gallonsNeeded.toFixed(2)}</strong></div>
-            <div><span className="text-blue-700">Gallons w/ Waste:</span> <strong>{gallonsWithWaste.toFixed(2)}</strong></div>
             <div><span className="text-blue-700">Containers Needed:</span> <strong>{containersNeeded}</strong></div>
             <div><span className="text-blue-700">Sq Ft / Gallon:</span> <strong>{sqFtPerGallon.toFixed(1)}</strong></div>
             <div><span className="text-blue-700">Sq Ft / Container:</span> <strong>{sqFtPerContainer.toFixed(1)}</strong></div>
             <div><span className="text-blue-700">Material Cost:</span> <strong>${materialCost.toFixed(2)}</strong></div>
-            <div className="col-span-2 sm:col-span-3"><span className="text-blue-700">Material Price w/ Markup:</span> <strong>${materialPriceWithMarkup.toFixed(2)}</strong></div>
+            <div><span className="text-blue-700">Material Price w/ Markup:</span> <strong>${materialPriceWithMarkup.toFixed(2)}</strong></div>
           </div>
         </div>
       )}
