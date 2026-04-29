@@ -441,18 +441,19 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const calculateCoatingApplicationCost = (coatingApp, areaSqFt = 0) => {
     const sqFt = parseFloat(areaSqFt) || 0;
     const materialCostPct = coatingApp.materialCostPct ?? 20;
-    const adjCostPerContainer = (parseFloat(coatingApp.materialCostPerContainer) || 0) * (1 + materialCostPct / 100);
+    const costPerContainer = parseFloat(coatingApp.materialCostPerContainer) || 0;
+    // "Price/Container" = Cost × (1 + Material Cost overhead). Material Markup is applied on top of this.
+    const pricePerContainer = costPerContainer * (1 + materialCostPct / 100);
     const calcMethod = coatingApp.calculationMethod || 'manualOverride';
     const coverage = calculateCoatingCoverage(coatingApp, areaSqFt);
     const containers = (calcMethod === 'manualOverride')
       ? (coatingApp.numContainers || 0)
       : coverage.containersNeeded;
-    const baseMaterialCost = Math.round(adjCostPerContainer * containers * 100) / 100;
+    const baseMaterialCost = Math.round(pricePerContainer * containers * 100) / 100;
     const pricePerSqFt = parseFloat(coatingApp.defaultPricePerSqFt) || 0;
-    const pricePerContainer = Math.round(pricePerSqFt * coverage.sqFtPerContainer * 100) / 100;
     const totalCost = Math.round(pricePerSqFt * sqFt * 100) / 100;
     const markupAmount = Math.round((totalCost - baseMaterialCost) * 100) / 100;
-    return { containers, baseMaterialCost, markupAmount, totalCost, pricePerContainer, adjCostPerContainer, coverage };
+    return { containers, baseMaterialCost, markupAmount, totalCost, costPerContainer, pricePerContainer, coverage };
   };
 
   const validateAndSet = (value, setter, key, currentState) => {
@@ -1918,13 +1919,13 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                     <div>
                                       <label className="block text-sm font-medium text-gray-700 mb-1">
                                         Cost/Container ($)
-                                        <Tooltip text="Auto-calculated material cost per container (includes material cost adjustment)." />
+                                        <Tooltip text="Editable raw cost per container — change to reflect supplier price updates." />
                                       </label>
                                       <input
-                                        type="text"
-                                        readOnly
-                                        value={coatingCalcs.adjCostPerContainer > 0 ? `$${coatingCalcs.adjCostPerContainer.toFixed(2)}` : '—'}
-                                        className="w-full border border-gray-200 bg-gray-100 text-gray-600 p-2 rounded-lg cursor-not-allowed"
+                                        type="number" step="0.01" min="0"
+                                        value={foamApp.materialCostPerContainer || ""}
+                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'materialCostPerContainer', e.target.value)}
+                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                       />
                                     </div>
                                     <div>
