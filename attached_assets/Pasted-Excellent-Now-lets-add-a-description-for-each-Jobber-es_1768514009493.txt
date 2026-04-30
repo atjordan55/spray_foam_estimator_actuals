@@ -1,0 +1,19 @@
+Excellent!
+Now lets add a description for each Jobber estimate line item for the different foam types 
+
+- First let's add a new drop down option for Area Type called Exterior Walls 
+- If the Area Type selected is Exterior Walls and the Foam Type is Closed Cell add this description (The values in quotes should be pulled from the corresponding estimator field):
+Closed-cell spray foam insulation applied at an average depth of "(Foam Thickness (inches)" inches within exterior wall cavities, creating a high-performance thermal barrier, moisture seal, and structural enhancement. Includes sealing around all windows and doors as well as sealing bottom plates.
+[Resulting in an effective R-Value of "(R-Value output"]
+
+- If the Area Type selected is Exterior Walls and the Foam Type is Open Cell add this description (The values in quotes should be pulled from the corresponding field):
+Open-cell spray foam insulation applied at an average depth of "(Foam Thickness (inches)" inches within exterior wall cavities, creating a high performance air seal, sound deadening, and high level thermal resistance. Includes sealing around all windows and doors as well as sealing bottom plates.
+[Resulting in an effective R-Value of "(R-Value output"]
+
+- If the Area Type selected is Roof Deck and the Foam Type is Closed Cell add this description (The values in quotes should be pulled from the corresponding estimator field):
+Closed-cell spray foam insulation applied at an average depth of "(Foam Thickness (inches)" inches to the underside of the roof deck, providing a high-performance air seal, moisture barrier, and superior thermal resistance.
+[Resulting in an effective R-Value of "(R-Value output"]
+
+- If the Area Type selected is Roof Deck and the Foam Type is Open Cell add this description (The values in quotes should be pulled from the corresponding estimator field):
+Open cell spray foam applied at an average depth of "(Foam Thickness (inches)" inches to the underside of the roof deck, providing a high performance air seal, sound deadening, and high level thermal resistance.
+[Resulting in an effective R-Value of "(R-Value output"]
