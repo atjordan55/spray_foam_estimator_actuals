@@ -1,0 +1,14 @@
+{
+  "rewrites": [
+    { "source": "/auth/jobber", "destination": "/api/auth/jobber" },
+    { "source": "/auth/jobber/callback", "destination": "/api/auth/jobber/callback" }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+      ]
+    }
+  ]
+}

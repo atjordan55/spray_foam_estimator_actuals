@@ -1,14 +1,10 @@
 {
-  "name": "spray-foam-estimator-actuals",
+  "name": "spray-foam-estimator",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@neondatabase/serverless": "^0.10.0",
     "autoprefixer": "^10.4.0",
-    "concurrently": "^8.2.0",
-    "cors": "^2.8.5",
-    "express": "^5.2.1",
-    "node-fetch": "^2.7.0",
-    "pg": "^8.17.1",
     "postcss": "^8.4.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -16,13 +12,11 @@
     "tailwindcss": "^3.0.0"
   },
   "scripts": {
-    "start": "node server.js",
-    "dev": "concurrently \"PORT=3001 react-scripts start\" \"node server.js\"",
+    "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
-  "proxy": "http://localhost:5000",
   "browserslist": {
     "production": [
       ">0.2%",
