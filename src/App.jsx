@@ -28,7 +28,7 @@ const MiniOutput = ({ sqft, gallons, sets, baseMaterialCost, markupAmount, total
   </div>
 );
 
-const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, closedCellGallons, closedCellSets, totalBaseCost, totalMarkup, totalCost }) => (
+const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, closedCellGallons, closedCellSets, coatingBreakdown = [], totalBaseCost, totalMarkup, totalCost }) => (
   <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
     <h5 className="font-semibold text-blue-800 mb-3">Area Summary</h5>
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
@@ -40,6 +40,9 @@ const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, clo
       {(closedCellGallons > 0 || closedCellSets > 0) && (
         <div><span className="font-medium">Closed Cell:</span> {closedCellGallons.toFixed(1)} gallons ({closedCellSets.toFixed(2)} sets)</div>
       )}
+      {coatingBreakdown.map(([name, info]) => (
+        <div key={name}><span className="font-medium">{name}:</span> {info.gallons.toFixed(1)} gallons ({info.containers} containers)</div>
+      ))}
       <div><span className="font-medium">Base Cost:</span> ${totalBaseCost.toFixed(2)}</div>
       <div><span className="font-medium">Markup:</span> ${totalMarkup.toFixed(2)}</div>
       <div><span className="font-medium text-blue-800">Total:</span> <span className="font-semibold text-blue-800">${totalCost.toFixed(2)}</span></div>
@@ -47,28 +50,73 @@ const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, clo
   </div>
 );
 
-const createFoamApplication = (foamType = "Open") => {
-  if (foamType === "Closed") {
-    return {
-      id: Date.now() + Math.random(),
-      foamType: "Closed",
-      foamThickness: 2,
-      materialPrice: 2300,
-      materialMarkup: 60.59,
-      boardFeetPerSet: 4000
-    };
-  }
+const getFoamTypesFromSettings = (settings) => {
+  if (settings?.foamTypes?.length > 0) return settings.foamTypes;
+  // Backwards compat: derive from old openCell/closedCell
+  return [
+    { id: 'open-cell', name: 'Open Cell', category: 'Open', foamThickness: settings?.openCell?.foamThickness ?? 6, foamCostPerSet: settings?.openCell?.materialPrice ?? 1870, materialCostPct: 20, boardFeetPerSet: settings?.openCell?.boardFeetPerSet ?? 14000, materialMarkup: settings?.openCell?.materialMarkup ?? 76.77 },
+    { id: 'closed-cell', name: 'Closed Cell', category: 'Closed', foamThickness: settings?.closedCell?.foamThickness ?? 2, foamCostPerSet: settings?.closedCell?.materialPrice ?? 2300, materialCostPct: 20, boardFeetPerSet: settings?.closedCell?.boardFeetPerSet ?? 4000, materialMarkup: settings?.closedCell?.materialMarkup ?? 66.67 },
+  ];
+};
+
+const createFoamApplication = (foamTypeObj = null, settings = null) => {
+  const foamTypes = getFoamTypesFromSettings(settings);
+  // foamTypeObj can be a foam type object from settings, or null (use first)
+  const ft = foamTypeObj || foamTypes[0] || { id: 'open-cell', name: 'Open Cell', category: 'Open', foamThickness: 6, foamCostPerSet: 1870, materialCostPct: 20, boardFeetPerSet: 14000, materialMarkup: 76.77 };
   return {
     id: Date.now() + Math.random(),
-    foamType: "Open",
-    foamThickness: 6,
-    materialPrice: 1870,
-    materialMarkup: 75,
-    boardFeetPerSet: 14000
+    applicationType: 'Foam',
+    foamTypeId: ft.id,
+    foamTypeName: ft.productName ?? ft.name,
+    foamTypeCategory: ft.category,  // "Open" or "Closed" for R-value
+    foamThickness: ft.defaultThicknessInches ?? ft.foamThickness ?? 6,
+    materialPrice: ft.cost ?? ft.foamCostPerSet ?? ft.materialPrice ?? 1870,
+    materialCostPct: ft.materialCostPct ?? 20,
+    materialMarkup: ft.materialMarkupPercent ?? ft.materialMarkup ?? 76.77,
+    wasteFactorPercent: ft.wasteFactorPercent ?? 0,
+    boardFeetPerSet: ft.boardFeetPerSet ?? 14000,
   };
 };
 
-const createArea = (name = "Area 1") => ({
+const createCoatingApplication = (coatingTypeObj = null) => {
+  const ct = coatingTypeObj || {};
+  return {
+    id: Date.now() + Math.random(),
+    applicationType: 'Coating',
+    coatingTypeId: ct.id || null,
+    coatingTypeName: ct.productName ?? ct.name ?? '',
+    materialCostPerContainer: ct.cost ?? ct.foamCostPerContainer ?? 0,
+    materialCostPct: ct.materialCostPct ?? 20,
+    materialMarkup: ct.materialMarkupPercent ?? ct.materialMarkup ?? 0,
+    containerType: ct.containerType ?? '5 gallon bucket',
+    containerGallons: ct.containerGallons ?? 5,
+    usableGallonsPerSet: ct.usableGallonsPerSet ?? ct.containerGallons ?? 5,
+    calculationMethod: ct.calculationMethod ?? 'manualOverride',
+    thicknessType: ct.thicknessType ?? 'none',
+    defaultThickness: ct.defaultThickness ?? 0,
+    sqFtPerGallon: ct.sqFtPerGallon ?? 0,
+    maxSinglePassWetMils: ct.maxSinglePassWetMils ?? 0,
+    solidsByVolumePercent: ct.solidsByVolumePercent ?? 0,
+    pricePerContainer: ct.defaultPricePerContainer ?? 0,
+    defaultPricePerSqFt: ct.defaultPricePerSqFt ?? 0,
+  };
+};
+
+// Legacy compat: convert old foamType:"Open"|"Closed" to new structure
+const migrateFoamApplication = (foamApp) => {
+  if (foamApp.applicationType) return foamApp; // already new format
+  const category = foamApp.foamType === 'Closed' ? 'Closed' : 'Open';
+  return {
+    ...foamApp,
+    applicationType: 'Foam',
+    foamTypeId: category === 'Closed' ? 'closed-cell' : 'open-cell',
+    foamTypeName: category === 'Closed' ? 'Closed Cell' : 'Open Cell',
+    foamTypeCategory: category,
+    materialCostPct: 20,
+  };
+};
+
+const createArea = (name = "Area 1", settings = null) => ({
   id: Date.now() + Math.random(),
   name,
   areaSqFt: 0,
@@ -77,7 +125,7 @@ const createArea = (name = "Area 1") => ({
   areaType: "General Area",
   roofPitch: "4/12",
   applyPitchToManualArea: false,
-  foamApplications: [createFoamApplication("Open")]
+  foamApplications: [createFoamApplication(null, settings)],
 });
 
 const getDefaultState = () => ({
@@ -88,8 +136,8 @@ const getDefaultState = () => ({
     phone: "",
     email: ""
   },
-  estimateDate: new Date().toISOString().split('T')[0],
-  expirationDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  engagementDate: new Date().toISOString().split('T')[0],
+  completionDate: "",
   projectNotes: "",
   globalInputs: {
     laborHours: 0,
@@ -97,27 +145,31 @@ const getDefaultState = () => ({
     laborMarkup: 40,
     travelDistance: 50,
     travelRate: 0.70,
+    dieselPricePerGallon: 0,
     wasteDisposal: 50,
-    equipmentRental: 0
+    equipmentRental: 0,
+    generatorRuntime: 0,
   },
   sprayAreas: [createArea("Area 1")],
   actuals: {
     actualLaborHours: null,
     actualOpenGallons: null,
     actualClosedGallons: null,
+    actualCoatingGallonsByType: {},
     actualFuelCost: null,
     actualWasteDisposal: null,
     actualEquipmentRental: null
   }
 });
 
-export default function SprayFoamEstimator() {
+export default function SprayFoamEstimator({ onAdmin }) {
   const defaultState = getDefaultState();
   
+  const [adminSettings, setAdminSettings] = useState(null);
   const [estimateName, setEstimateName] = useState(defaultState.estimateName);
   const [customerInfo, setCustomerInfo] = useState(defaultState.customerInfo);
-  const [estimateDate, setEstimateDate] = useState(defaultState.estimateDate);
-  const [expirationDate, setExpirationDate] = useState(defaultState.expirationDate);
+  const [engagementDate, setEngagementDate] = useState(defaultState.engagementDate);
+  const [completionDate, setCompletionDate] = useState(defaultState.completionDate);
   const [projectNotes, setProjectNotes] = useState(defaultState.projectNotes);
   const [globalInputs, setGlobalInputs] = useState(defaultState.globalInputs);
   const [sprayAreas, setSprayAreas] = useState(defaultState.sprayAreas);
@@ -148,6 +200,12 @@ export default function SprayFoamEstimator() {
   const [discountPercentInput, setDiscountPercentInput] = useState("");
   const [discountDollarFocused, setDiscountDollarFocused] = useState(false);
   const [discountPercentFocused, setDiscountPercentFocused] = useState(false);
+  const [depositDollar, setDepositDollar] = useState(0);
+  const [depositPercent, setDepositPercent] = useState(0);
+  const [depositDollarInput, setDepositDollarInput] = useState("");
+  const [depositPercentInput, setDepositPercentInput] = useState("");
+  const [depositDollarFocused, setDepositDollarFocused] = useState(false);
+  const [depositPercentFocused, setDepositPercentFocused] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('recentEstimates');
@@ -160,6 +218,7 @@ export default function SprayFoamEstimator() {
     }
     
     checkJobberStatus();
+    loadAdminSettings();
     
     const params = new URLSearchParams(window.location.search);
     if (params.get('jobber_connected') === 'true') {
@@ -173,6 +232,42 @@ export default function SprayFoamEstimator() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+
+  const loadAdminSettings = async () => {
+    try {
+      const res = await fetch('/api/admin/settings');
+      const data = await res.json();
+      if (data.settings) {
+        setAdminSettings(data.settings);
+        const s = data.settings;
+        setGlobalInputs(prev => ({
+          ...prev,
+          manualLaborRate: s.labor?.laborRate ?? prev.manualLaborRate,
+          laborMarkup: s.labor?.laborMarkup ?? prev.laborMarkup,
+          travelDistance: s.project?.travelDistance ?? prev.travelDistance,
+          travelRate: s.project?.travelRate ?? prev.travelRate,
+          wasteDisposal: s.project?.wasteDisposal ?? prev.wasteDisposal,
+          equipmentRental: s.project?.equipmentRental ?? prev.equipmentRental,
+          generatorRuntime: prev.generatorRuntime,
+        }));
+        // Update initial spray area with correct foam type from admin settings
+        setSprayAreas(prev => {
+          if (prev.length === 1 && prev[0].name === 'Area 1' &&
+              prev[0].foamApplications.length === 1 &&
+              prev[0].foamApplications[0].foamThickness === (prev[0].foamApplications[0].foamThickness)) {
+            // Only update if it's still the default empty area
+            const hasData = prev[0].areaSqFt > 0 || prev[0].length > 0 || prev[0].width > 0;
+            if (!hasData) {
+              return [{ ...prev[0], foamApplications: [createFoamApplication(null, data.settings)] }];
+            }
+          }
+          return prev;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load admin settings:', err);
+    }
+  };
   
   const checkJobberStatus = async () => {
     try {
@@ -226,9 +321,11 @@ export default function SprayFoamEstimator() {
     laborMarkup: "Percentage markup added to labor cost",
     chargedLaborRate: "Rate charged to customer (labor rate + markup)",
     travelDistance: "Round-trip distance to job site",
-    travelRate: "Cost per mile for travel (fuel, wear, etc.)",
+    travelRate: "Cost per mile for travel (fuel, wear, etc.) — auto-calculated from diesel price if diesel > 0",
+    dieselPricePerGallon: "Current diesel price per gallon — sets travel rate and generator fuel cost automatically",
     wasteDisposal: "Cost for disposing of waste materials",
     equipmentRental: "Any equipment rental costs for this job",
+    generatorRuntime: "Total generator run time in hours (includes warmup, spray, and cleanup)",
     areaSqFt: "Total square footage for this area (enter directly or use Length × Width)",
     length: "Optional: Length in feet (used to calculate area if provided)",
     width: "Optional: Width in feet (used to calculate area if provided)",
@@ -249,8 +346,10 @@ export default function SprayFoamEstimator() {
     chargedLaborRate: "Charged Labor Rate ($/hr)",
     travelDistance: "Travel Distance (miles)",
     travelRate: "Travel Rate ($/mile)",
+    dieselPricePerGallon: "Diesel Price ($/gal)",
     wasteDisposal: "Waste Disposal ($)",
     equipmentRental: "Equipment Rental ($)",
+    generatorRuntime: "Generator Runtime (hrs)",
     areaSqFt: "Area (Sq Ft)",
     length: "Length (ft) - Optional",
     width: "Width (ft) - Optional",
@@ -288,26 +387,114 @@ export default function SprayFoamEstimator() {
   };
 
   const calculateFoamApplicationCost = (area, foamApp) => {
-    const sqft = calculateEffectiveSqFt(area);
+    const rawSqft = calculateEffectiveSqFt(area);
+    const sqft = Math.round(rawSqft);
     const boardFeetPerInch = sqft;
     const totalBoardFeet = boardFeetPerInch * foamApp.foamThickness;
-    const sets = totalBoardFeet / foamApp.boardFeetPerSet;
+    const sets = foamApp.boardFeetPerSet > 0 ? totalBoardFeet / foamApp.boardFeetPerSet : 0;
     const gallons = sets * 100;
-    const materialCost = foamApp.materialPrice * 1.20;
-    const baseMaterialCost = sets * materialCost;
-    const markupAmount = baseMaterialCost * (foamApp.materialMarkup / 100);
-    
-    // Calculate pricePerSqFt rounded to 2 decimals, then derive totalCost from it
-    // This ensures displayed $/Sq Ft × Sq Ft = Total (for Jobber consistency)
-    const rawTotal = baseMaterialCost + markupAmount;
+    const materialCostPct = foamApp.materialCostPct ?? 20;
+    const materialCost = foamApp.materialPrice * (1 + materialCostPct / 100);
+    const baseMaterialCost = Math.round(sets * materialCost * 100) / 100;
+    const rawMarkup = baseMaterialCost * (foamApp.materialMarkup / 100);
+    const rawTotal = baseMaterialCost + rawMarkup;
     const pricePerSqFt = sqft > 0 ? Math.round((rawTotal / sqft) * 100) / 100 : 0;
-    const totalCost = pricePerSqFt * sqft;
-    
-    // R-Value calculation: Closed Cell = 7.2 per inch, Open Cell = 3.8 per inch
-    const rValuePerInch = foamApp.foamType === "Closed" ? 7.2 : 3.8;
+    const totalCost = Math.round(pricePerSqFt * sqft * 100) / 100;
+    const markupAmount = Math.round((totalCost - baseMaterialCost) * 100) / 100;
+    // Support both old foamType and new foamTypeCategory
+    const category = foamApp.foamTypeCategory || foamApp.foamType;
+    const rValuePerInch = category === "Closed" ? 7.2 : 3.8;
     const rValue = rValuePerInch * foamApp.foamThickness;
 
     return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost, rValue, pricePerSqFt };
+  };
+
+  // Compute live coverage outputs for a coating application against an area's sq ft
+  const calculateCoatingCoverage = (coatingApp, areaSqFt) => {
+    const sqFt = parseFloat(areaSqFt) || 0;
+    const containerGallons = parseFloat(coatingApp.containerGallons) || 0;
+    const usableGals = parseFloat(coatingApp.usableGallonsPerSet) || 0;
+    const effectivePerContainer = usableGals > 0 ? usableGals : containerGallons;
+    const calcMethod = coatingApp.calculationMethod || 'manualOverride';
+
+    let gallonsNeeded = 0;
+    let sqFtPerGallon = parseFloat(coatingApp.sqFtPerGallon) || 0;
+    let wetMilWarning = '';
+
+    if (calcMethod === 'wetFilmThickness') {
+      const wetMils = parseFloat(coatingApp.defaultThickness) || 0;
+      const maxWet = parseFloat(coatingApp.maxSinglePassWetMils) || 0;
+      const TAR = wetMils > 0 ? wetMils / 16 : 0;
+      gallonsNeeded = TAR > 0 ? (sqFt / 100) * TAR : 0;
+      sqFtPerGallon = TAR > 0 ? 100 / TAR : 0;
+      if (maxWet > 0 && wetMils > maxWet) {
+        wetMilWarning = `Wet mil thickness (${wetMils.toFixed(2)}) exceeds max single-pass (${maxWet.toFixed(2)}). Multiple passes required.`;
+      }
+    } else if (calcMethod === 'coveragePerGallon') {
+      gallonsNeeded = sqFtPerGallon > 0 ? sqFt / sqFtPerGallon : 0;
+    }
+
+    const containersNeeded = (effectivePerContainer > 0 && gallonsNeeded > 0) ? Math.ceil(gallonsNeeded / effectivePerContainer) : 0;
+    const sqFtPerContainer = sqFtPerGallon * effectivePerContainer;
+    return { gallonsNeeded, containersNeeded, sqFtPerGallon, sqFtPerContainer, wetMilWarning };
+  };
+
+  const calculateCoatingApplicationCost = (coatingApp, areaSqFt = 0) => {
+    const sqFt = parseFloat(areaSqFt) || 0;
+    const materialCostPct = coatingApp.materialCostPct ?? 20;
+    const costPerContainer = parseFloat(coatingApp.materialCostPerContainer) || 0;
+    // "Price/Container" = Cost × (1 + Material Cost overhead). Material Markup is applied on top of this.
+    const pricePerContainer = costPerContainer * (1 + materialCostPct / 100);
+    const calcMethod = coatingApp.calculationMethod || 'manualOverride';
+    const coverage = calculateCoatingCoverage(coatingApp, areaSqFt);
+    const containers = (calcMethod === 'manualOverride')
+      ? (coatingApp.numContainers || 0)
+      : coverage.containersNeeded;
+    const baseMaterialCost = Math.round(pricePerContainer * containers * 100) / 100;
+    const markupPct = parseFloat(coatingApp.materialMarkup) || 0;
+    const markupAmount = Math.round(baseMaterialCost * (markupPct / 100) * 100) / 100;
+    const totalCost = Math.round((baseMaterialCost + markupAmount) * 100) / 100;
+    return { containers, baseMaterialCost, markupAmount, totalCost, costPerContainer, pricePerContainer, coverage };
+  };
+
+  // Build per-coating-type breakdown across given areas. Returns Map<typeName, info>.
+  const buildCoatingTypeBreakdown = (areas) => {
+    const map = new Map();
+    areas.forEach(area => {
+      const sqft = calculateEffectiveSqFt(area);
+      area.foamApplications.forEach(app => {
+        if (app.applicationType !== "Coating") return;
+        const cc = calculateCoatingApplicationCost(app, sqft);
+        const name = (app.coatingTypeName && app.coatingTypeName.trim()) || "Coating";
+        const existing = map.get(name) || {
+          gallonsNeeded: 0,
+          containers: 0,
+          baseMaterialCost: 0,
+          markupAmount: 0,
+          containerGallons: parseFloat(app.containerGallons) || 0,
+          pricePerContainer: cc.pricePerContainer || 0,
+        };
+        existing.gallonsNeeded += cc.coverage.gallonsNeeded || 0;
+        existing.containers += cc.containers || 0;
+        existing.baseMaterialCost += cc.baseMaterialCost;
+        existing.markupAmount += cc.markupAmount;
+        if (parseFloat(app.containerGallons) > 0) existing.containerGallons = parseFloat(app.containerGallons);
+        if (cc.pricePerContainer > 0) existing.pricePerContainer = cc.pricePerContainer;
+        map.set(name, existing);
+      });
+    });
+    return map;
+  };
+
+  const handleActualCoatingGallonsChange = (typeName, value) => {
+    const parsed = parseFloat(value);
+    setActuals(prev => ({
+      ...prev,
+      actualCoatingGallonsByType: {
+        ...(prev.actualCoatingGallonsByType || {}),
+        [typeName]: isNaN(parsed) ? null : Math.max(0, parsed),
+      },
+    }));
   };
 
   const validateAndSet = (value, setter, key, currentState) => {
@@ -317,7 +504,18 @@ export default function SprayFoamEstimator() {
   };
 
   const handleGlobalChange = (key, value) => {
-    validateAndSet(value, setGlobalInputs, key, globalInputs);
+    if (key === 'dieselPricePerGallon') {
+      const diesel = parseFloat(value) || 0;
+      const truckMpg = adminSettings?.generator?.truckMpg ?? 8;
+      const newTravelRate = truckMpg > 0 ? Math.round((diesel / truckMpg) * 100) / 100 : globalInputs.travelRate;
+      setGlobalInputs(prev => ({
+        ...prev,
+        dieselPricePerGallon: Math.max(0, diesel),
+        travelRate: diesel > 0 ? newTravelRate : prev.travelRate,
+      }));
+    } else {
+      validateAndSet(value, setGlobalInputs, key, globalInputs);
+    }
   };
 
   const handleChargedLaborRateChange = (value) => {
@@ -390,6 +588,50 @@ export default function SprayFoamEstimator() {
     setDiscountDollarInput(dollarValue.toFixed(2));
   };
 
+  const handleDepositDollarChange = (value, customerChargeValue) => {
+    const parsed = parseFloat(value) || 0;
+    const validDollar = Math.max(0, Math.min(parsed, customerChargeValue));
+    setDepositDollar(validDollar);
+    setDepositDollarInput(value);
+    if (customerChargeValue > 0) {
+      const percentValue = (validDollar / customerChargeValue) * 100;
+      setDepositPercent(percentValue);
+      setDepositPercentInput(percentValue.toFixed(2));
+    }
+  };
+
+  const handleDepositPercentChange = (value, customerChargeValue) => {
+    const parsed = parseFloat(value) || 0;
+    const validPercent = Math.max(0, Math.min(parsed, 100));
+    setDepositPercent(validPercent);
+    setDepositPercentInput(value);
+    const dollarValue = (validPercent / 100) * customerChargeValue;
+    setDepositDollar(dollarValue);
+    setDepositDollarInput(dollarValue.toFixed(2));
+  };
+
+  const handleDepositDollarBlur = (customerChargeValue) => {
+    setDepositDollarFocused(false);
+    const validDollar = Math.max(0, Math.min(depositDollar, customerChargeValue));
+    setDepositDollar(validDollar);
+    setDepositDollarInput(validDollar.toFixed(2));
+    if (customerChargeValue > 0) {
+      const percentValue = (validDollar / customerChargeValue) * 100;
+      setDepositPercent(percentValue);
+      setDepositPercentInput(percentValue.toFixed(2));
+    }
+  };
+
+  const handleDepositPercentBlur = (customerChargeValue) => {
+    setDepositPercentFocused(false);
+    const validPercent = Math.max(0, Math.min(depositPercent, 100));
+    setDepositPercent(validPercent);
+    setDepositPercentInput(validPercent.toFixed(2));
+    const dollarValue = (validPercent / 100) * customerChargeValue;
+    setDepositDollar(dollarValue);
+    setDepositDollarInput(dollarValue.toFixed(2));
+  };
+
   const handleActualsChange = (key, value) => {
     const parsed = parseFloat(value);
     setActuals({ ...actuals, [key]: isNaN(parsed) ? null : Math.max(0, parsed) });
@@ -424,19 +666,19 @@ export default function SprayFoamEstimator() {
   const updateFoamApplication = (areaIndex, foamIndex, key, value) => {
     const updated = [...sprayAreas];
     const foamApp = updated[areaIndex].foamApplications[foamIndex];
-    
-    if (key === "foamType") {
-      foamApp.foamType = value;
-      if (value === "Open") {
-        foamApp.foamThickness = 6;
-        foamApp.materialPrice = 1870;
-        foamApp.materialMarkup = 75;
-        foamApp.boardFeetPerSet = 14000;
-      } else if (value === "Closed") {
-        foamApp.foamThickness = 2;
-        foamApp.materialPrice = 2300;
-        foamApp.materialMarkup = 60.59;
-        foamApp.boardFeetPerSet = 4000;
+    if (key === "foamTypeId") {
+      // User selected a foam type from admin settings dropdown
+      const foamTypes = getFoamTypesFromSettings(adminSettings);
+      const ft = foamTypes.find(f => f.id === value);
+      if (ft) {
+        foamApp.foamTypeId = ft.id;
+        foamApp.foamTypeName = ft.name;
+        foamApp.foamTypeCategory = ft.category;
+        foamApp.foamThickness = ft.foamThickness ?? foamApp.foamThickness;
+        foamApp.materialPrice = ft.foamCostPerSet ?? ft.materialPrice ?? foamApp.materialPrice;
+        foamApp.materialCostPct = ft.materialCostPct ?? foamApp.materialCostPct;
+        foamApp.materialMarkup = ft.materialMarkup ?? foamApp.materialMarkup;
+        foamApp.boardFeetPerSet = ft.boardFeetPerSet ?? foamApp.boardFeetPerSet;
       }
     } else {
       const parsed = parseFloat(value);
@@ -445,9 +687,81 @@ export default function SprayFoamEstimator() {
     setSprayAreas(updated);
   };
 
-  const addFoamApplication = (areaIndex, foamType = "Open") => {
+  const computeCoatingBaseCostPerSqFt = (coatingApp, area) => {
+    const sqFt = calculateEffectiveSqFt(area);
+    if (!sqFt) return 0;
+    const cov = calculateCoatingCoverage(coatingApp, sqFt);
+    const matCostPct = coatingApp.materialCostPct ?? 20;
+    const pricePerContainer = (parseFloat(coatingApp.materialCostPerContainer) || 0) * (1 + matCostPct / 100);
+    const calcMethod = coatingApp.calculationMethod || 'manualOverride';
+    const containers = (calcMethod === 'manualOverride')
+      ? (coatingApp.numContainers || 0)
+      : cov.containersNeeded;
+    return (pricePerContainer * containers) / sqFt;
+  };
+
+  const updateCoatingApplication = (areaIndex, foamIndex, key, value) => {
     const updated = [...sprayAreas];
-    updated[areaIndex].foamApplications.push(createFoamApplication(foamType));
+    const area = updated[areaIndex];
+    const coatingApp = area.foamApplications[foamIndex];
+    if (key === "coatingTypeId") {
+      const coatingTypes = adminSettings?.coatingTypes || [];
+      const ct = coatingTypes.find(c => c.id === value);
+      if (ct) {
+        coatingApp.coatingTypeId = ct.id;
+        coatingApp.coatingTypeName = ct.productName ?? ct.name;
+        coatingApp.materialCostPerContainer = ct.cost ?? ct.foamCostPerContainer ?? coatingApp.materialCostPerContainer;
+        coatingApp.materialCostPct = ct.materialCostPct ?? coatingApp.materialCostPct;
+        coatingApp.materialMarkup = ct.materialMarkupPercent ?? ct.materialMarkup ?? coatingApp.materialMarkup;
+        coatingApp.containerType = ct.containerType ?? coatingApp.containerType;
+        coatingApp.containerGallons = ct.containerGallons ?? coatingApp.containerGallons;
+        coatingApp.usableGallonsPerSet = ct.usableGallonsPerSet ?? ct.containerGallons ?? coatingApp.usableGallonsPerSet;
+        coatingApp.calculationMethod = ct.calculationMethod ?? coatingApp.calculationMethod;
+        coatingApp.thicknessType = ct.thicknessType ?? coatingApp.thicknessType;
+        coatingApp.defaultThickness = ct.defaultThickness ?? coatingApp.defaultThickness;
+        coatingApp.sqFtPerGallon = ct.sqFtPerGallon ?? coatingApp.sqFtPerGallon;
+        coatingApp.maxSinglePassWetMils = ct.maxSinglePassWetMils ?? coatingApp.maxSinglePassWetMils;
+        coatingApp.solidsByVolumePercent = ct.solidsByVolumePercent ?? coatingApp.solidsByVolumePercent;
+        coatingApp.pricePerContainer = ct.defaultPricePerContainer ?? coatingApp.pricePerContainer;
+        // Reconcile $/Sq Ft from markup % + base cost so the two stay in sync
+        const baseCostPerSqFt = computeCoatingBaseCostPerSqFt(coatingApp, area);
+        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + (parseFloat(coatingApp.materialMarkup) || 0) / 100) * 1000) / 1000;
+      }
+    } else if (key === "materialMarkup" || key === "defaultPricePerSqFt") {
+      const parsed = parseFloat(value);
+      const newVal = isNaN(parsed) ? 0 : Math.max(0, parsed);
+      const baseCostPerSqFt = computeCoatingBaseCostPerSqFt(coatingApp, area);
+      if (key === "materialMarkup") {
+        coatingApp.materialMarkup = newVal;
+        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + newVal / 100) * 1000) / 1000;
+      } else {
+        coatingApp.defaultPricePerSqFt = newVal;
+        coatingApp.materialMarkup = baseCostPerSqFt > 0
+          ? Math.max(0, Math.round(((newVal / baseCostPerSqFt) - 1) * 100 * 100) / 100)
+          : 0;
+      }
+    } else {
+      const parsed = parseFloat(value);
+      coatingApp[key] = isNaN(parsed) ? 0 : Math.max(0, parsed);
+      // If a parameter that affects baseCostPerSqFt changes, keep $/Sq Ft locked to current markup
+      if (["materialCostPerContainer", "containerGallons", "usableGallonsPerSet", "defaultThickness", "sqFtPerGallon"].includes(key)) {
+        const baseCostPerSqFt = computeCoatingBaseCostPerSqFt(coatingApp, area);
+        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + (parseFloat(coatingApp.materialMarkup) || 0) / 100) * 1000) / 1000;
+      }
+    }
+    setSprayAreas(updated);
+  };
+
+  const addFoamApplication = (areaIndex) => {
+    const updated = [...sprayAreas];
+    const foamTypes = getFoamTypesFromSettings(adminSettings);
+    updated[areaIndex].foamApplications.push(createFoamApplication(foamTypes[0] || null, adminSettings));
+    setSprayAreas(updated);
+  };
+
+  const addCoatingApplication = (areaIndex) => {
+    const updated = [...sprayAreas];
+    updated[areaIndex].foamApplications.push(createCoatingApplication());
     setSprayAreas(updated);
   };
 
@@ -494,8 +808,11 @@ export default function SprayFoamEstimator() {
     }
     
     const newPricePerSqFt = parseFloat(value) || 0;
-    const materialCostPerSet = foamApp.materialPrice * 1.20;
-    const minPricePerSqFt = (foamApp.foamThickness / foamApp.boardFeetPerSet) * materialCostPerSet;
+    const materialCostPctLocal = foamApp.materialCostPct ?? 20;
+    const materialCostPerSet = foamApp.materialPrice * (1 + materialCostPctLocal / 100);
+    const minPricePerSqFt = foamApp.boardFeetPerSet > 0
+      ? (foamApp.foamThickness / foamApp.boardFeetPerSet) * materialCostPerSet
+      : 0;
     
     const roundedInput = Math.round(newPricePerSqFt * 100) / 100;
     const roundedMin = Math.round(minPricePerSqFt * 100) / 100;
@@ -516,7 +833,7 @@ export default function SprayFoamEstimator() {
       const newMarkup = ((pricePerSet / materialCostPerSet) - 1) * 100;
       
       const updated = [...sprayAreas];
-      updated[areaIndex].foamApplications[foamIndex].materialMarkup = Math.max(0, newMarkup);
+      updated[areaIndex].foamApplications[foamIndex].materialMarkup = Math.max(0, Math.round(newMarkup * 100) / 100);
       setSprayAreas(updated);
     }
     
@@ -532,11 +849,24 @@ export default function SprayFoamEstimator() {
       const defaults = getDefaultState();
       setEstimateName(defaults.estimateName);
       setCustomerInfo(defaults.customerInfo);
-      setEstimateDate(defaults.estimateDate);
-      setExpirationDate(defaults.expirationDate);
+      setEngagementDate(defaults.engagementDate);
+      setCompletionDate(defaults.completionDate);
       setProjectNotes(defaults.projectNotes);
-      setGlobalInputs(defaults.globalInputs);
-      setSprayAreas(defaults.sprayAreas);
+      const s = adminSettings;
+      setGlobalInputs({
+        ...defaults.globalInputs,
+        manualLaborRate: s?.labor?.laborRate ?? defaults.globalInputs.manualLaborRate,
+        laborMarkup: s?.labor?.laborMarkup ?? defaults.globalInputs.laborMarkup,
+        travelDistance: s?.project?.travelDistance ?? defaults.globalInputs.travelDistance,
+        travelRate: s?.project?.travelRate ?? defaults.globalInputs.travelRate,
+        wasteDisposal: s?.project?.wasteDisposal ?? defaults.globalInputs.wasteDisposal,
+        equipmentRental: s?.project?.equipmentRental ?? defaults.globalInputs.equipmentRental,
+        generatorRuntime: defaults.globalInputs.generatorRuntime,
+      });
+      setSprayAreas([{
+        ...createArea("Area 1"),
+        foamApplications: [createFoamApplication(null, adminSettings)]
+      }]);
       setActuals(defaults.actuals);
       setActualsConfirmed(false);
       setEstimateNameManuallyEdited(false);
@@ -556,6 +886,10 @@ export default function SprayFoamEstimator() {
       setDiscountPercent(0);
       setDiscountDollarInput("");
       setDiscountPercentInput("");
+      setDepositDollar(0);
+      setDepositPercent(0);
+      setDepositDollarInput("");
+      setDepositPercentInput("");
     }
   };
 
@@ -563,14 +897,16 @@ export default function SprayFoamEstimator() {
     const data = { 
       estimateName, 
       customerInfo, 
-      estimateDate, 
-      expirationDate, 
+      engagementDate,
+      completionDate,
       projectNotes, 
       globalInputs, 
       sprayAreas, 
       actuals,
       discountDollar,
       discountPercent,
+      depositDollar,
+      depositPercent,
       savedAt: new Date().toISOString()
     };
     const json = JSON.stringify(data, null, 2);
@@ -610,7 +946,14 @@ export default function SprayFoamEstimator() {
     
     return areas.map((area, index) => {
       if (area.foamApplications) {
-        return area;
+        // Migrate individual foam apps if they're in old format
+        return {
+          ...area,
+          foamApplications: area.foamApplications.map(app => {
+            if (app.applicationType === "Coating") return app;
+            return migrateFoamApplication(app);
+          }),
+        };
       }
       
       return {
@@ -627,7 +970,7 @@ export default function SprayFoamEstimator() {
           foamType: area.foamType || "Open",
           foamThickness: area.foamThickness || 6,
           materialPrice: area.materialPrice || 1870,
-          materialMarkup: area.materialMarkup || 75,
+          materialMarkup: area.materialMarkup || 76.77,
           boardFeetPerSet: area.boardFeetPerSet || 14000
         }]
       };
@@ -637,8 +980,8 @@ export default function SprayFoamEstimator() {
   const applyEstimateData = (data) => {
     setEstimateName(data.estimateName || "");
     setCustomerInfo(data.customerInfo || getDefaultState().customerInfo);
-    setEstimateDate(data.estimateDate || getDefaultState().estimateDate);
-    setExpirationDate(data.expirationDate || getDefaultState().expirationDate);
+    setEngagementDate(data.engagementDate || "");
+    setCompletionDate(data.completionDate || "");
     setProjectNotes(data.projectNotes || "");
     setGlobalInputs(data.globalInputs || getDefaultState().globalInputs);
     setSprayAreas(migrateSprayAreas(data.sprayAreas));
@@ -646,12 +989,16 @@ export default function SprayFoamEstimator() {
       actualLaborHours: data.actuals?.actualLaborHours ?? null,
       actualOpenGallons: data.actuals?.actualOpenGallons ?? null,
       actualClosedGallons: data.actuals?.actualClosedGallons ?? null,
+      actualCoatingGallonsByType: data.actuals?.actualCoatingGallonsByType
+        ?? (data.actuals?.actualCoatingGallons != null ? { Coating: data.actuals.actualCoatingGallons } : {}),
       actualFuelCost: data.actuals?.actualFuelCost ?? null,
       actualWasteDisposal: data.actuals?.actualWasteDisposal ?? null,
       actualEquipmentRental: data.actuals?.actualEquipmentRental ?? null
     });
     setDiscountDollar(data.discountDollar ?? 0);
     setDiscountPercent(data.discountPercent ?? 0);
+    setDepositDollar(data.depositDollar ?? 0);
+    setDepositPercent(data.depositPercent ?? 0);
     setActualsConfirmed(false);
     setEstimateNameManuallyEdited(!!data.estimateName);
     setChargedLaborRateError("");
@@ -710,30 +1057,51 @@ export default function SprayFoamEstimator() {
       const getLineItemDescription = (area, foamApp, rValue) => {
         const thickness = foamApp.foamThickness;
         const rValueFormatted = rValue.toFixed(1);
+        const category = foamApp.foamTypeCategory || foamApp.foamType;
         
-        if (area.areaType === "Exterior Walls" && foamApp.foamType === "Closed") {
+        // Check admin-configured Jobber descriptions first
+        const descKey = `${area.areaType}-${category}`;
+        const adminDesc = adminSettings?.jobberDescriptions?.[descKey];
+        if (adminDesc) {
+          return `${adminDesc}\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        
+        if (area.areaType === "Exterior Walls" && category === "Closed") {
           return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high-performance thermal barrier, moisture seal, and structural enhancement. Includes sealing around all windows and doors as well as sealing bottom plates.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
         }
-        if (area.areaType === "Exterior Walls" && foamApp.foamType === "Open") {
+        if (area.areaType === "Exterior Walls" && category === "Open") {
           return `Open-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high performance air seal, sound deadening, and high level thermal resistance. Includes sealing around all windows and doors as well as sealing bottom plates.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
         }
-        if (area.areaType === "Roof Deck" && foamApp.foamType === "Closed") {
+        if (area.areaType === "Roof Deck" && category === "Closed") {
           return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high-performance air seal, moisture barrier, and superior thermal resistance.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
         }
-        if (area.areaType === "Roof Deck" && foamApp.foamType === "Open") {
+        if (area.areaType === "Roof Deck" && category === "Open") {
           return `Open cell spray foam applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high performance air seal, sound deadening, and high level thermal resistance.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
         }
         return '';
       };
       
       sprayAreas.forEach(area => {
+        const areaSqFtForCalcs = calculateEffectiveSqFt(area);
         area.foamApplications.forEach(foamApp => {
+          if (foamApp.applicationType === "Coating") {
+            const calcs = calculateCoatingApplicationCost(foamApp, areaSqFtForCalcs);
+            lineItems.push({
+              name: `${area.name} - ${foamApp.coatingTypeName || 'Coating'}`,
+              description: `${foamApp.numContainers || 0} containers`,
+              quantity: foamApp.numContainers || 0,
+              unitPrice: foamApp.pricePerContainer || 0,
+            });
+            return;
+          }
           const calcs = calculateFoamApplicationCost(area, foamApp);
           const sqft = Math.round(calcs.sqft);
           const description = getLineItemDescription(area, foamApp, calcs.rValue);
+          const category = foamApp.foamTypeCategory || foamApp.foamType;
+          const displayName = foamApp.foamTypeName || `${category} Cell`;
           
           lineItems.push({
-            name: `${area.name} (${foamApp.foamType} Cell ${foamApp.foamThickness}in)`,
+            name: `${area.name} (${displayName} ${foamApp.foamThickness}in)`,
             description,
             quantity: sqft,
             unitPrice: calcs.pricePerSqFt,
@@ -741,8 +1109,7 @@ export default function SprayFoamEstimator() {
         });
       });
       
-      const fuelCostAmount = globalInputs.travelDistance * globalInputs.travelRate;
-      const laborTotal = baseLaborCost + laborMarkupAmount + fuelCostAmount + globalInputs.wasteDisposal + globalInputs.equipmentRental;
+      const laborTotal = Math.round((baseLaborCost + laborMarkupAmount + additionalJobCostBase + additionalJobCostMarkup) * 100) / 100;
       if (laborTotal > 0) {
         lineItems.push({
           name: 'Complete Spray Foam Insulation Solution',
@@ -752,16 +1119,32 @@ export default function SprayFoamEstimator() {
         });
       }
       
+      const quotePayload = {
+        clientId: client.id,
+        propertyId,
+        title: estimateName || 'Spray Foam Estimate',
+        lineItems,
+        notes: projectNotes,
+      };
+      
+      if (discountDollar > 0) {
+        quotePayload.discount = {
+          rate: parseFloat(discountDollar.toFixed(2)),
+          type: 'Unit',
+        };
+      }
+      
+      if (depositDollar > 0) {
+        quotePayload.deposit = {
+          rate: parseFloat(depositDollar.toFixed(2)),
+          type: 'Unit',
+        };
+      }
+      
       const quoteResponse = await fetch('/api/jobber/create-quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId: client.id,
-          propertyId,
-          title: estimateName || 'Spray Foam Estimate',
-          lineItems,
-          notes: projectNotes,
-        }),
+        body: JSON.stringify(quotePayload),
       });
       
       if (!quoteResponse.ok) {
@@ -790,42 +1173,91 @@ export default function SprayFoamEstimator() {
   let materialMarkupAmount = 0;
   let weightedOpenCostPerGallon = 0;
   let weightedClosedCostPerGallon = 0;
+  let totalCoatingBaseCost = 0;
+  let totalCoatingMarkupAmount = 0;
+
+  let totalCoatingGallons = 0;
+  let totalCoatingContainers = 0;
 
   sprayAreas.forEach(area => {
-    area.foamApplications.forEach(foamApp => {
-      const { gallons, sets, baseMaterialCost: cost, markupAmount, materialCost } = calculateFoamApplicationCost(area, foamApp);
-      if (foamApp.foamType === "Open") {
-        totalGallons.open += gallons;
-        totalSets.open += sets;
-        weightedOpenCostPerGallon += gallons > 0 ? cost : 0;
+    const areaSqFtForTotals = calculateEffectiveSqFt(area);
+    area.foamApplications.forEach(app => {
+      if (app.applicationType === "Coating") {
+        const cc = calculateCoatingApplicationCost(app, areaSqFtForTotals);
+        const cost = cc.baseMaterialCost;
+        const markupAmount = cc.markupAmount;
+        totalCoatingBaseCost += cost;
+        totalCoatingMarkupAmount += markupAmount;
+        totalCoatingGallons += cc.coverage.gallonsNeeded || 0;
+        totalCoatingContainers += cc.containers || 0;
+        baseMaterialCost += cost;
+        materialMarkupAmount += markupAmount;
       } else {
-        totalGallons.closed += gallons;
-        totalSets.closed += sets;
-        weightedClosedCostPerGallon += gallons > 0 ? cost : 0;
+        const { gallons, sets, baseMaterialCost: cost, markupAmount } = calculateFoamApplicationCost(area, app);
+        const category = app.foamTypeCategory || app.foamType;
+        if (category === "Open") {
+          totalGallons.open += gallons;
+          totalSets.open += sets;
+          weightedOpenCostPerGallon += gallons > 0 ? cost : 0;
+        } else {
+          totalGallons.closed += gallons;
+          totalSets.closed += sets;
+          weightedClosedCostPerGallon += gallons > 0 ? cost : 0;
+        }
+        baseMaterialCost += cost;
+        materialMarkupAmount += markupAmount;
       }
-      baseMaterialCost += cost;
-      materialMarkupAmount += markupAmount;
     });
   });
 
   const openCostPerGallon = totalGallons.open > 0 ? weightedOpenCostPerGallon / totalGallons.open : 0;
   const closedCostPerGallon = totalGallons.closed > 0 ? weightedClosedCostPerGallon / totalGallons.closed : 0;
 
-  const fuelCost = globalInputs.travelDistance * globalInputs.travelRate;
-  const baseLaborCost = globalInputs.laborHours * globalInputs.manualLaborRate;
-  const totalBaseCost = baseMaterialCost + baseLaborCost + fuelCost + globalInputs.wasteDisposal + globalInputs.equipmentRental;
-  const laborMarkupAmount = baseLaborCost * (globalInputs.laborMarkup / 100);
-  const totalJobCost = totalBaseCost + materialMarkupAmount + laborMarkupAmount;
+  // Per-coating-type breakdown for display + per-type actuals
+  const coatingBreakdown = buildCoatingTypeBreakdown(sprayAreas);
+  const coatingBreakdownEntries = Array.from(coatingBreakdown.entries());
+
+  // Fuel cost: travel + generator
+  const travelFuelCost = Math.round(globalInputs.travelDistance * globalInputs.travelRate * 100) / 100;
+  const generatorBurnRate = adminSettings?.generator?.burnRate ?? 0;
+  const generatorRuntime = parseFloat(globalInputs.generatorRuntime) || 0;
+  const generatorFuelCost = Math.round(generatorBurnRate * generatorRuntime * (globalInputs.dieselPricePerGallon || 0) * 100) / 100;
+  const fuelCost = Math.round((travelFuelCost + generatorFuelCost) * 100) / 100;
+
+  // Backward-compat: if old single field present, use as fallback for all 3
+  const legacyJobCostMarkup = adminSettings?.additionalJobCostMarkupPct ?? 30;
+  const fuelMarkupPct = (adminSettings?.fuelMarkupPercent ?? legacyJobCostMarkup) / 100;
+  const wasteDisposalMarkupPct = (adminSettings?.wasteDisposalMarkupPercent ?? legacyJobCostMarkup) / 100;
+  const equipmentRentalMarkupPct = (adminSettings?.equipmentRentalMarkupPercent ?? legacyJobCostMarkup) / 100;
+
+  const wasteDisposalBase = parseFloat(globalInputs.wasteDisposal) || 0;
+  const equipmentRentalBase = parseFloat(globalInputs.equipmentRental) || 0;
+  const additionalJobCostBase = Math.round((fuelCost + wasteDisposalBase + equipmentRentalBase) * 100) / 100;
+
+  const fuelMarkupAmount = Math.round(fuelCost * fuelMarkupPct * 100) / 100;
+  const wasteDisposalMarkupAmount = Math.round(wasteDisposalBase * wasteDisposalMarkupPct * 100) / 100;
+  const equipmentRentalMarkupAmount = Math.round(equipmentRentalBase * equipmentRentalMarkupPct * 100) / 100;
+  const additionalJobCostMarkup = Math.round((fuelMarkupAmount + wasteDisposalMarkupAmount + equipmentRentalMarkupAmount) * 100) / 100;
+
+  const baseLaborCost = Math.round(globalInputs.laborHours * globalInputs.manualLaborRate * 100) / 100;
+  const totalBaseCost = Math.round((baseMaterialCost + baseLaborCost + additionalJobCostBase) * 100) / 100;
+  const laborMarkupAmount = Math.round(baseLaborCost * (globalInputs.laborMarkup / 100) * 100) / 100;
+  const totalJobCost = Math.round((totalBaseCost + materialMarkupAmount + laborMarkupAmount + additionalJobCostMarkup) * 100) / 100;
   const customerCost = totalJobCost - discountDollar;
   
   const netProfitBeforeCommission = customerCost - totalBaseCost;
   const profitMarginBeforeCommission = customerCost > 0 ? (netProfitBeforeCommission / customerCost) * 100 : 0;
   
   const calculateSalesCommission = (netProfit, margin) => {
-    if (margin >= 35) {
-      return netProfit * 0.12;
-    } else if (margin >= 30 && margin < 35) {
-      return netProfit * 0.10;
+    const tiers = adminSettings?.commission || {};
+    const tier2Min = tiers.tier2Threshold ?? 35;
+    const tier2Rate = (tiers.tier2Rate ?? 12) / 100;
+    const tier1Min = tiers.tier1Threshold ?? 30;
+    const tier1Rate = (tiers.tier1Rate ?? 10) / 100;
+    if (margin >= tier2Min) {
+      return netProfit * tier2Rate;
+    } else if (margin >= tier1Min && margin < tier2Min) {
+      return netProfit * tier1Rate;
     }
     return 0;
   };
@@ -842,9 +1274,25 @@ export default function SprayFoamEstimator() {
   const effectiveActualWasteDisposal = actuals.actualWasteDisposal ?? globalInputs.wasteDisposal;
   const effectiveActualEquipmentRental = actuals.actualEquipmentRental ?? globalInputs.equipmentRental;
 
-  const actualMaterialCost = effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon;
-  const actualLaborCost = effectiveActualLaborHours * globalInputs.manualLaborRate;
-  const actualBaseCost = actualMaterialCost + actualLaborCost + effectiveActualFuelCost + effectiveActualWasteDisposal + effectiveActualEquipmentRental;
+  // Per-coating-type actual material cost: ceil(actualGallons / containerGallons) × pricePerContainer
+  let actualCoatingMaterialCost = 0;
+  coatingBreakdownEntries.forEach(([name, info]) => {
+    const userActual = actuals.actualCoatingGallonsByType?.[name];
+    const effectiveGallons = (userActual !== undefined && userActual !== null) ? userActual : info.gallonsNeeded;
+    const containers = info.containerGallons > 0 ? Math.ceil(effectiveGallons / info.containerGallons) : 0;
+    actualCoatingMaterialCost += containers * info.pricePerContainer;
+  });
+  actualCoatingMaterialCost = Math.round(actualCoatingMaterialCost * 100) / 100;
+  const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon + actualCoatingMaterialCost) * 100) / 100;
+  const actualLaborCost = Math.round(effectiveActualLaborHours * globalInputs.manualLaborRate * 100) / 100;
+  const actualWasteDisposalBase = parseFloat(effectiveActualWasteDisposal) || 0;
+  const actualEquipmentRentalBase = parseFloat(effectiveActualEquipmentRental) || 0;
+  const actualAdditionalJobCostBase = Math.round((effectiveActualFuelCost + actualWasteDisposalBase + actualEquipmentRentalBase) * 100) / 100;
+  const actualFuelMarkupAmount = Math.round(effectiveActualFuelCost * fuelMarkupPct * 100) / 100;
+  const actualWasteDisposalMarkupAmount = Math.round(actualWasteDisposalBase * wasteDisposalMarkupPct * 100) / 100;
+  const actualEquipmentRentalMarkupAmount = Math.round(actualEquipmentRentalBase * equipmentRentalMarkupPct * 100) / 100;
+  const actualAdditionalJobCostMarkup = Math.round((actualFuelMarkupAmount + actualWasteDisposalMarkupAmount + actualEquipmentRentalMarkupAmount) * 100) / 100;
+  const actualBaseCost = Math.round((actualMaterialCost + actualLaborCost + actualAdditionalJobCostBase) * 100) / 100;
   const actualCustomerCost = customerCost;
   
   const actualNetProfitBeforeCommission = actualCustomerCost - actualBaseCost;
@@ -871,8 +1319,10 @@ export default function SprayFoamEstimator() {
   const actualBaseCostColor = getComparisonColor(actualBaseCost, totalBaseCost);
   
   const getJobNetProfitColor = (margin) => {
-    if (margin >= 35) return "text-green-600";
-    if (margin >= 30) return "text-yellow-600";
+    const tier2Min = adminSettings?.commission?.tier2Threshold ?? 35;
+    const tier1Min = adminSettings?.commission?.tier1Threshold ?? 30;
+    if (margin >= tier2Min) return "text-green-600";
+    if (margin >= tier1Min) return "text-yellow-600";
     return "text-red-600";
   };
   
@@ -898,7 +1348,10 @@ export default function SprayFoamEstimator() {
           <div className="flex flex-col gap-4 bg-white p-4 md:p-6 rounded-lg shadow-sm">
             <div className="flex flex-col lg:flex-row gap-4 justify-between items-start">
               <div className="flex-1 w-full">
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">Eco Innovations Estimator</h1>
+                <div className="flex items-center justify-between mb-4">
+                  <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{adminSettings?.companyName ? `${adminSettings.companyName} Estimator` : 'Eco Innovations Estimator'}</h1>
+                  {onAdmin && <button onClick={onAdmin} className="text-xs text-gray-400 hover:text-gray-600 no-print">Admin</button>}
+                </div>
                 <input
                   type="text"
                   placeholder="Enter estimate name..."
@@ -970,20 +1423,20 @@ export default function SprayFoamEstimator() {
             {/* Date Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Estimate Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Customer Engagement Date</label>
                 <input
                   type="date"
-                  value={estimateDate}
-                  onChange={(e) => setEstimateDate(e.target.value)}
+                  value={engagementDate}
+                  onChange={(e) => setEngagementDate(e.target.value)}
                   className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Valid Until</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Project Completion Date</label>
                 <input
                   type="date"
-                  value={expirationDate}
-                  onChange={(e) => setExpirationDate(e.target.value)}
+                  value={completionDate}
+                  onChange={(e) => setCompletionDate(e.target.value)}
                   className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -1129,6 +1582,46 @@ export default function SprayFoamEstimator() {
                           }}
                           className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
+                      ) : key === 'dieselPricePerGallon' ? (
+                        <div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="8"
+                            step="0.05"
+                            value={val}
+                            onChange={(e) => handleGlobalChange('dieselPricePerGallon', e.target.value)}
+                            className="w-full mb-1"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mb-1">
+                            <span>$0</span><span>$4</span><span>$8</span>
+                          </div>
+                          <input
+                            type="number"
+                            step="0.05"
+                            min="0"
+                            max="8"
+                            value={val === 0 ? "" : val}
+                            onChange={(e) => handleGlobalChange('dieselPricePerGallon', e.target.value)}
+                            className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          {val > 0 && (
+                            <p className="text-xs text-blue-600 mt-1">
+                              Travel rate auto-set to ${(val / (adminSettings?.generator?.truckMpg ?? 8)).toFixed(2)}/mile
+                              {generatorBurnRate > 0 && ` · Gen fuel: $${generatorFuelCost.toFixed(2)}`}
+                            </p>
+                          )}
+                        </div>
+                      ) : key === 'travelRate' ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={val === 0 ? "" : val.toFixed(2)}
+                          onChange={(e) => handleGlobalChange('travelRate', e.target.value)}
+                          disabled={globalInputs.dieselPricePerGallon > 0}
+                          className={`w-full border border-gray-300 p-2 rounded-lg ${globalInputs.dieselPricePerGallon > 0 ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
+                        />
                       ) : key === 'wasteDisposal' ? (
                         <input
                           type="number"
@@ -1204,6 +1697,52 @@ export default function SprayFoamEstimator() {
                         setDiscountPercentInput(discountPercent === 0 ? "" : discountPercent.toFixed(2));
                       }}
                       onBlur={() => handleDiscountPercentBlur(totalJobCost)}
+                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Deposit Section */}
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Deposit</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Deposit ($)
+                      <Tooltip text="Dollar amount for the required deposit on the customer charge" />
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={depositDollarFocused ? depositDollarInput : (depositDollar === 0 ? "" : depositDollar.toFixed(2))}
+                      onChange={(e) => handleDepositDollarChange(e.target.value, customerCost)}
+                      onFocus={() => {
+                        setDepositDollarFocused(true);
+                        setDepositDollarInput(depositDollar === 0 ? "" : depositDollar.toFixed(2));
+                      }}
+                      onBlur={() => handleDepositDollarBlur(customerCost)}
+                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Deposit (%)
+                      <Tooltip text="Percentage of the customer charge for the required deposit" />
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={depositPercentFocused ? depositPercentInput : (depositPercent === 0 ? "" : depositPercent.toFixed(2))}
+                      onChange={(e) => handleDepositPercentChange(e.target.value, customerCost)}
+                      onFocus={() => {
+                        setDepositPercentFocused(true);
+                        setDepositPercentInput(depositPercent === 0 ? "" : depositPercent.toFixed(2));
+                      }}
+                      onBlur={() => handleDepositPercentBlur(customerCost)}
                       className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
@@ -1346,24 +1885,173 @@ export default function SprayFoamEstimator() {
                       {/* Foam Applications */}
                       <div className="border-t border-gray-200 pt-4 mt-4">
                         <div className="flex justify-between items-center mb-3">
-                          <h4 className="font-medium text-gray-800">Foam Applications</h4>
-                          <button 
-                            onClick={() => addFoamApplication(areaIndex)}
-                            className="text-blue-600 hover:text-blue-700 text-sm font-medium no-print"
-                          >
-                            + Add Foam Type
-                          </button>
+                          <h4 className="font-medium text-gray-800">Applications</h4>
+                          <div className="flex gap-2 no-print">
+                            <button 
+                              onClick={() => addFoamApplication(areaIndex)}
+                              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                            >
+                              + Add Foam
+                            </button>
+                            <button 
+                              onClick={() => addCoatingApplication(areaIndex)}
+                              className="text-purple-600 hover:text-purple-700 text-sm font-medium"
+                            >
+                              + Add Coating
+                            </button>
+                          </div>
                         </div>
                         
                         <div className="space-y-4">
                           {area.foamApplications.map((foamApp, foamIndex) => {
-                            const foamCalcs = calculateFoamApplicationCost(area, foamApp);
+                            const isCoating = foamApp.applicationType === "Coating";
                             const foamKey = `${areaIndex}-${foamIndex}`;
+
+                            if (isCoating) {
+                              const areaSqFtForCoating = calculateEffectiveSqFt(area);
+                              const coatingCalcs = calculateCoatingApplicationCost(foamApp, areaSqFtForCoating);
+                              const cov = coatingCalcs.coverage;
+                              const coatingTypes = adminSettings?.coatingTypes || [];
+                              const showWetMil = (foamApp.calculationMethod === 'wetFilmThickness');
+                              return (
+                                <div key={foamApp.id || foamIndex} className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
+                                  <div className="flex justify-between items-center mb-3">
+                                    <span className="text-sm font-semibold text-purple-700">Coating Application</span>
+                                    {area.foamApplications.length > 1 && (
+                                      <button onClick={() => removeFoamApplication(areaIndex, foamIndex)} className="text-red-500 hover:text-red-700 text-xs font-medium no-print">Remove</button>
+                                    )}
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">Coating Type</label>
+                                      {coatingTypes.length > 0 ? (
+                                        <select
+                                          value={foamApp.coatingTypeId || ""}
+                                          onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'coatingTypeId', e.target.value)}
+                                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                          <option value="">Select coating...</option>
+                                          {coatingTypes.map(ct => (
+                                            <option key={ct.id} value={ct.id}>{ct.productName ?? ct.name}</option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          placeholder="Coating name..."
+                                          value={foamApp.coatingTypeName || ""}
+                                          onChange={(e) => {
+                                            const updated = [...sprayAreas];
+                                            updated[areaIndex].foamApplications[foamIndex].coatingTypeName = e.target.value;
+                                            setSprayAreas(updated);
+                                          }}
+                                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        />
+                                      )}
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">Container Type</label>
+                                      <input
+                                        type="text"
+                                        readOnly
+                                        value={foamApp.containerType || ""}
+                                        className="w-full border border-gray-200 bg-gray-100 text-gray-600 p-2 rounded-lg cursor-not-allowed"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">Sq Ft / Container</label>
+                                      <input
+                                        type="text"
+                                        readOnly
+                                        value={cov.sqFtPerContainer > 0 ? cov.sqFtPerContainer.toFixed(0) : '—'}
+                                        className="w-full border border-gray-200 bg-gray-100 text-gray-600 p-2 rounded-lg cursor-not-allowed"
+                                      />
+                                    </div>
+                                    {showWetMil && (
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Thickness (wet mil)</label>
+                                        <input
+                                          type="number" step="0.1" min="0"
+                                          value={foamApp.defaultThickness || ""}
+                                          onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'defaultThickness', e.target.value)}
+                                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        />
+                                      </div>
+                                    )}
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Cost/Container ($)
+                                        <Tooltip text="Editable raw cost per container — change to reflect supplier price updates." />
+                                      </label>
+                                      <input
+                                        type="number" step="0.01" min="0"
+                                        value={foamApp.materialCostPerContainer || ""}
+                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'materialCostPerContainer', e.target.value)}
+                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Material Markup (%)
+                                        <Tooltip text="Editable. Changing this updates Price ($/Sq Ft) and the live totals below." />
+                                      </label>
+                                      <input
+                                        type="number" step="0.01" min="0"
+                                        value={foamApp.materialMarkup || ""}
+                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'materialMarkup', e.target.value)}
+                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Price/Container ($)
+                                        <Tooltip text="Auto-calculated from Price ($/Sq Ft) × Sq Ft per Container." />
+                                      </label>
+                                      <input
+                                        type="text"
+                                        readOnly
+                                        value={coatingCalcs.pricePerContainer > 0 ? `$${coatingCalcs.pricePerContainer.toFixed(2)}` : '—'}
+                                        className="w-full border border-gray-200 bg-gray-100 text-gray-600 p-2 rounded-lg cursor-not-allowed"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Price ($/Sq Ft)
+                                        <Tooltip text="Editable. Changing this updates Material Markup % and the live totals below." />
+                                      </label>
+                                      <input
+                                        type="number" step="0.001" min="0"
+                                        value={foamApp.defaultPricePerSqFt || ""}
+                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'defaultPricePerSqFt', e.target.value)}
+                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      />
+                                    </div>
+                                  </div>
+                                  {cov.wetMilWarning && (
+                                    <div className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 p-2 rounded">
+                                      ⚠ {cov.wetMilWarning}
+                                    </div>
+                                  )}
+                                  {(cov.gallonsNeeded > 0 || coatingCalcs.containers > 0) && (
+                                    <div className="mt-3 text-sm text-gray-600 bg-white p-2 rounded border border-purple-100 grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                      <span>Gallons: <strong>{cov.gallonsNeeded.toFixed(2)}</strong></span>
+                                      <span>Containers: <strong>{coatingCalcs.containers}</strong></span>
+                                      <span>Base: <strong>${coatingCalcs.baseMaterialCost.toFixed(2)}</strong></span>
+                                      <span>Markup: <strong>${coatingCalcs.markupAmount.toFixed(2)}</strong></span>
+                                      <span>Total: <strong className="text-purple-700">${coatingCalcs.totalCost.toFixed(2)}</strong></span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            const foamCalcs = calculateFoamApplicationCost(area, foamApp);
+                            const availableFoamTypes = getFoamTypesFromSettings(adminSettings);
                             return (
                               <div key={foamApp.id || foamIndex} className="bg-gray-50 p-4 rounded-lg">
                                 <div className="flex justify-between items-center mb-3">
                                   <span className="text-sm font-medium text-gray-700">
-                                    {foamApp.foamType} Cell - {foamApp.foamThickness}" thick
+                                    {foamApp.foamTypeName || `${foamApp.foamTypeCategory || foamApp.foamType} Cell`} — {foamApp.foamThickness}" thick
                                   </span>
                                   {area.foamApplications.length > 1 && (
                                     <button 
@@ -1381,14 +2069,26 @@ export default function SprayFoamEstimator() {
                                       Foam Type
                                       <Tooltip text={tooltips.foamType} />
                                     </label>
-                                    <select
-                                      value={foamApp.foamType}
-                                      onChange={(e) => updateFoamApplication(areaIndex, foamIndex, 'foamType', e.target.value)}
-                                      className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                      <option value="Open">Open</option>
-                                      <option value="Closed">Closed</option>
-                                    </select>
+                                    {availableFoamTypes.length > 0 ? (
+                                      <select
+                                        value={foamApp.foamTypeId || ""}
+                                        onChange={(e) => updateFoamApplication(areaIndex, foamIndex, 'foamTypeId', e.target.value)}
+                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      >
+                                        {availableFoamTypes.map(ft => (
+                                          <option key={ft.id} value={ft.id}>{ft.name}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <select
+                                        value={foamApp.foamTypeCategory || foamApp.foamType || "Open"}
+                                        onChange={(e) => updateFoamApplication(areaIndex, foamIndex, 'foamTypeCategory', e.target.value)}
+                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      >
+                                        <option value="Open">Open Cell</option>
+                                        <option value="Closed">Closed Cell</option>
+                                      </select>
+                                    )}
                                   </div>
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1525,14 +2225,27 @@ export default function SprayFoamEstimator() {
                           let totalMarkup = 0;
                           let totalCost = 0;
                           
+                          const areaCoatingMap = new Map();
                           area.foamApplications.forEach(foamApp => {
+                            if (foamApp.applicationType === "Coating") {
+                              const coatingCalcs = calculateCoatingApplicationCost(foamApp, areaEffectiveSqFt);
+                              totalBaseCost += coatingCalcs.baseMaterialCost;
+                              totalMarkup += coatingCalcs.markupAmount;
+                              totalCost += coatingCalcs.totalCost;
+                              const coatingName = (foamApp.coatingTypeName && foamApp.coatingTypeName.trim()) || "Coating";
+                              const prev = areaCoatingMap.get(coatingName) || { gallons: 0, containers: 0 };
+                              prev.gallons += coatingCalcs.coverage.gallonsNeeded || 0;
+                              prev.containers += coatingCalcs.containers || 0;
+                              areaCoatingMap.set(coatingName, prev);
+                              return;
+                            }
                             const foamCalcs = calculateFoamApplicationCost(area, foamApp);
                             totalRValue += foamCalcs.rValue;
                             totalBaseCost += foamCalcs.baseMaterialCost;
                             totalMarkup += foamCalcs.markupAmount;
                             totalCost += foamCalcs.totalCost;
-                            
-                            if (foamApp.foamType === "Open") {
+                            const category = foamApp.foamTypeCategory || foamApp.foamType;
+                            if (category === "Open") {
                               openCellGallons += foamCalcs.gallons;
                               openCellSets += foamCalcs.sets;
                             } else {
@@ -1549,6 +2262,7 @@ export default function SprayFoamEstimator() {
                               openCellSets={openCellSets}
                               closedCellGallons={closedCellGallons}
                               closedCellSets={closedCellSets}
+                              coatingBreakdown={Array.from(areaCoatingMap.entries())}
                               totalBaseCost={totalBaseCost}
                               totalMarkup={totalMarkup}
                               totalCost={totalCost}
@@ -1580,7 +2294,7 @@ export default function SprayFoamEstimator() {
               {!actualsConfirmed && (
                 <p className="text-red-600 font-medium mb-4">Please confirm that actuals are correct</p>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Actual Labor Hours</label>
                   <input
@@ -1675,6 +2389,48 @@ export default function SprayFoamEstimator() {
                   />
                 </div>
               </div>
+              {coatingBreakdownEntries.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                  {coatingBreakdownEntries.map(([name, info]) => {
+                    const inputKey = `coatingGallons_${name}`;
+                    const stored = actuals.actualCoatingGallonsByType?.[name];
+                    const fallback = info.gallonsNeeded;
+                    return (
+                      <div key={name}>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Actual {name} Gallons</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={actualsFocused[inputKey]
+                            ? (actualsInputs[inputKey] ?? "")
+                            : (stored !== undefined && stored !== null
+                                ? (stored === 0 ? "" : stored.toFixed(1))
+                                : (fallback === 0 ? "" : fallback.toFixed(1)))}
+                          onChange={(e) => setActualsInputs(prev => ({ ...prev, [inputKey]: e.target.value }))}
+                          onFocus={() => {
+                            setActualsFocused(prev => ({ ...prev, [inputKey]: true }));
+                            const currentVal = (stored !== undefined && stored !== null) ? stored : fallback;
+                            setActualsInputs(prev => ({ ...prev, [inputKey]: currentVal > 0 ? currentVal.toFixed(1) : "" }));
+                          }}
+                          onBlur={() => {
+                            setActualsFocused(prev => ({ ...prev, [inputKey]: false }));
+                            if (actualsInputs[inputKey] !== undefined && actualsInputs[inputKey] !== "") {
+                              handleActualCoatingGallonsChange(name, actualsInputs[inputKey]);
+                            }
+                            setActualsInputs(prev => {
+                              const updated = { ...prev };
+                              delete updated[inputKey];
+                              return updated;
+                            });
+                          }}
+                          className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Actual Fuel Cost ($)</label>
@@ -1886,6 +2642,12 @@ export default function SprayFoamEstimator() {
                       <span className="text-gray-600">Closed Cell:</span>
                       <span>{totalGallons.closed.toFixed(1)} gallons ({totalSets.closed.toFixed(2)} sets)</span>
                     </div>
+                    {coatingBreakdownEntries.map(([name, info]) => (
+                      <div key={name} className="flex justify-between py-1">
+                        <span className="text-gray-600">{name}:</span>
+                        <span>{info.gallonsNeeded.toFixed(1)} gallons ({info.containers} containers)</span>
+                      </div>
+                    ))}
                     <hr className="my-3" />
                     <div className="flex justify-between py-1">
                       <span className="text-gray-600">Base Material Cost:</span>
@@ -1895,17 +2657,30 @@ export default function SprayFoamEstimator() {
                       <span className="text-gray-600">Base Labor Cost:</span>
                       <span>${baseLaborCost.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between py-1">
-                      <span className="text-gray-600">Fuel Cost:</span>
-                      <span>${fuelCost.toFixed(2)}</span>
-                    </div>
+                    {generatorBurnRate > 0 ? (
+                      <>
+                        <div className="flex justify-between py-1">
+                          <span className="text-gray-600">Travel Fuel:</span>
+                          <span>${travelFuelCost.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between py-1">
+                          <span className="text-gray-600">Generator Runtime ({generatorRuntime.toFixed(1)} hrs):</span>
+                          <span>${generatorFuelCost.toFixed(2)}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Fuel Cost:</span>
+                        <span>${fuelCost.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between py-1">
                       <span className="text-gray-600">Waste Disposal:</span>
-                      <span>${globalInputs.wasteDisposal.toFixed(2)}</span>
+                      <span>${(parseFloat(globalInputs.wasteDisposal) || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between py-1">
                       <span className="text-gray-600">Equipment Rental:</span>
-                      <span>${globalInputs.equipmentRental.toFixed(2)}</span>
+                      <span>${(parseFloat(globalInputs.equipmentRental) || 0).toFixed(2)}</span>
                     </div>
                     <hr className="my-3" />
                     <div className="flex justify-between py-1 font-medium">
@@ -1920,6 +2695,24 @@ export default function SprayFoamEstimator() {
                       <span className="text-gray-600">Labor Markup:</span>
                       <span>${laborMarkupAmount.toFixed(2)}</span>
                     </div>
+                    {fuelMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Fuel Markup ({(fuelMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${fuelMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {wasteDisposalMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Waste Disposal Markup ({(wasteDisposalMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${wasteDisposalMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {equipmentRentalMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Equipment Rental Markup ({(equipmentRentalMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${equipmentRentalMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
                     <hr className="my-3" />
                     <div className="flex justify-between py-1 font-bold text-lg">
                       <span>Sales Price:</span>
@@ -1935,6 +2728,12 @@ export default function SprayFoamEstimator() {
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
+                    {depositDollar > 0 && (
+                      <div className="flex justify-between py-1 text-blue-600">
+                        <span>Deposit Due ({depositPercent.toFixed(1)}%):</span>
+                        <span>${depositDollar.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className={`flex justify-between py-1 font-bold ${getJobNetProfitColor(estimatedJobNetProfitMargin)}`}>
                       <span>Estimated Job Net Profit:</span>
                       <span>${estimatedJobNetProfit.toFixed(2)} ({estimatedJobNetProfitMargin.toFixed(1)}%)</span>
@@ -1992,6 +2791,24 @@ export default function SprayFoamEstimator() {
                       <span className="text-gray-600">Labor Markup:</span>
                       <span>${laborMarkupAmount.toFixed(2)}</span>
                     </div>
+                    {actualFuelMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Fuel Markup ({(fuelMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${actualFuelMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {actualWasteDisposalMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Waste Disposal Markup ({(wasteDisposalMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${actualWasteDisposalMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {actualEquipmentRentalMarkupAmount > 0 && (
+                      <div className="flex justify-between py-1">
+                        <span className="text-gray-600">Equipment Rental Markup ({(equipmentRentalMarkupPct * 100).toFixed(1)}%):</span>
+                        <span>${actualEquipmentRentalMarkupAmount.toFixed(2)}</span>
+                      </div>
+                    )}
                     <hr className="my-3" />
                     <div className="flex justify-between py-1 font-bold text-lg">
                       <span>Sales Price:</span>
@@ -2007,6 +2824,12 @@ export default function SprayFoamEstimator() {
                       <span>Customer Charge:</span>
                       <span>${customerCost.toFixed(2)}</span>
                     </div>
+                    {depositDollar > 0 && (
+                      <div className="flex justify-between py-1 text-blue-600">
+                        <span>Deposit Due ({depositPercent.toFixed(1)}%):</span>
+                        <span>${depositDollar.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className={`flex justify-between py-1 font-bold ${getJobNetProfitColor(actualJobNetProfitMargin)}`}>
                       <span>Actual Job Net Profit:</span>
                       <span>${actualJobNetProfit.toFixed(2)} ({actualJobNetProfitMargin.toFixed(1)}%)</span>
