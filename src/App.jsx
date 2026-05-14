@@ -1416,6 +1416,24 @@ export default function SprayFoamEstimator({ onAdmin }) {
     return sum + g * cpg;
   }, 0);
 
+  // Phase 2 — Replacement (no-credits) parallel cost calculation
+  let replacementMaterialCost = 0;
+  let replacementMaterialMarkupAmount = 0;
+  sprayAreas.forEach(area => {
+    const areaSqFtForTotals = calculateEffectiveSqFt(area);
+    area.foamApplications.forEach(app => {
+      if (app.applicationType === "Coating") {
+        const cc = calculateCoatingApplicationCost(app, areaSqFtForTotals);
+        replacementMaterialCost += cc.baseMaterialCost;
+        replacementMaterialMarkupAmount += cc.markupAmount;
+      } else {
+        const { baseMaterialCost: cost, markupAmount } = calculateFoamApplicationCost(area, app, true);
+        replacementMaterialCost += cost;
+        replacementMaterialMarkupAmount += markupAmount;
+      }
+    });
+  });
+
   // Per-coating-type breakdown for display + per-type actuals
   const coatingBreakdown = buildCoatingTypeBreakdown(sprayAreas);
   const coatingBreakdownEntries = Array.from(coatingBreakdown.entries());
@@ -1469,6 +1487,23 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const totalFees = salesCommission;
   const estimatedProfit = customerCost - totalBaseCost - totalFees;
   const profitMargin = customerCost > 0 ? (estimatedProfit / customerCost) * 100 : 0;
+
+  // Phase 2 — Replacement (no-credits) profit path
+  const replacementTotalBaseCost = Math.round((replacementMaterialCost + baseLaborCost + additionalJobCostBase) * 100) / 100;
+  const replacementTotalJobCost = Math.round((replacementTotalBaseCost + replacementMaterialMarkupAmount + laborMarkupAmount + additionalJobCostMarkup) * 100) / 100;
+  const replacementCustomerCost = replacementTotalJobCost - discountDollar;
+  const replacementNetProfitBeforeCommission = replacementCustomerCost - replacementTotalBaseCost;
+  const replacementProfitMarginBeforeCommission = replacementCustomerCost > 0
+    ? (replacementNetProfitBeforeCommission / replacementCustomerCost) * 100
+    : 0;
+  const replacementSalesCommission = calculateSalesCommission(replacementNetProfitBeforeCommission, replacementProfitMarginBeforeCommission);
+  const replacementProfit = replacementCustomerCost - replacementTotalBaseCost - replacementSalesCommission;
+  const replacementMargin = replacementCustomerCost > 0
+    ? (replacementProfit / replacementCustomerCost) * 100
+    : 0;
+  const inventoryMarginAdvantage = profitMargin - replacementMargin;
+  const inventoryProfitAdvantage = estimatedProfit - replacementProfit;
+  const replacementMarginColor = replacementMargin < 25 ? "text-red-600" : replacementMargin < 30 ? "text-yellow-600" : "text-green-600";
 
   const effectiveActualLaborHours = actuals.actualLaborHours ?? globalInputs.laborHours;
   const effectiveActualOpenGallons = actuals.actualOpenGallons ?? totalGallons.open;
@@ -2966,8 +3001,21 @@ export default function SprayFoamEstimator({ onAdmin }) {
                           {(actualMargin - profitMargin).toFixed(1)}%
                         </td>
                       </tr>
+                      {totalInventoryCreditGallons > 0 && (
+                        <tr>
+                          <td className="py-2 pr-2 text-gray-600">Replacement Margin</td>
+                          <td className={`py-2 px-2 text-right ${replacementMarginColor}`}>{replacementMargin.toFixed(1)}%</td>
+                          <td className="py-2 px-2 text-right text-gray-400">—</td>
+                          <td className="py-2 pl-2 text-right text-gray-400">—</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
+                  {totalInventoryCreditGallons > 0 && (
+                    <p className="mt-2 text-xs text-gray-500 italic">
+                      Replacement Margin reflects economic cost assuming all material was purchased fresh at current prices.
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (
@@ -3089,10 +3137,32 @@ export default function SprayFoamEstimator({ onAdmin }) {
                       <span>${totalFees.toFixed(2)}</span>
                     </div>
                     <hr className="my-3" />
-                    <div className={`flex justify-between py-1 font-bold text-lg ${marginColor}`}>
-                      <span>Final Estimated Profit:</span>
-                      <span>${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</span>
-                    </div>
+                    {totalInventoryCreditGallons > 0 ? (
+                      <>
+                        <div className={`flex justify-between py-1 font-bold text-lg ${marginColor}`}>
+                          <span className="flex items-center">
+                            Operational Margin:
+                            <Tooltip text="Profit based on actual cash spent on this job. Inventory material applied as a credit is treated as $0 cost." />
+                          </span>
+                          <span>${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</span>
+                        </div>
+                        <div className="py-1 text-sm text-green-700 italic">
+                          + {inventoryMarginAdvantage.toFixed(1)}pp margin · +${inventoryProfitAdvantage.toFixed(2)} profit from {totalInventoryCreditGallons.toFixed(1)} gal of credited inventory
+                        </div>
+                        <div className={`flex justify-between py-1 font-bold text-lg ${replacementMarginColor}`}>
+                          <span className="flex items-center">
+                            Replacement Margin:
+                            <Tooltip text="What your margin would be if all material were purchased at current market prices. Reflects the true economic value of your inventory efficiency." />
+                          </span>
+                          <span>${replacementProfit.toFixed(2)} ({replacementMargin.toFixed(1)}%)</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className={`flex justify-between py-1 font-bold text-lg ${marginColor}`}>
+                        <span>Final Estimated Profit:</span>
+                        <span>${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
