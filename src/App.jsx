@@ -41,7 +41,7 @@ const AreaSummary = ({ areaSqFt, totalRValue, openCellGallons, openCellSets, clo
         <div><span className="font-medium">Closed Cell:</span> {closedCellGallons.toFixed(1)} gallons ({closedCellSets.toFixed(2)} sets)</div>
       )}
       {coatingBreakdown.map(([name, info]) => (
-        <div key={name}><span className="font-medium">{name}:</span> {info.gallons.toFixed(1)} gallons ({info.containers} containers)</div>
+        <div key={name}><span className="font-medium">{name}:</span> {info.gallons.toFixed(1)} gallons ({info.containers.toFixed(2)} containers)</div>
       ))}
       <div><span className="font-medium">Base Cost:</span> ${totalBaseCost.toFixed(2)}</div>
       <div><span className="font-medium">Markup:</span> ${totalMarkup.toFixed(2)}</div>
@@ -434,7 +434,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
       gallonsNeeded = sqFtPerGallon > 0 ? sqFt / sqFtPerGallon : 0;
     }
 
-    const containersNeeded = (effectivePerContainer > 0 && gallonsNeeded > 0) ? Math.ceil(gallonsNeeded / effectivePerContainer) : 0;
+    const containersNeeded = (effectivePerContainer > 0 && gallonsNeeded > 0) ? (gallonsNeeded / effectivePerContainer) : 0;
     const sqFtPerContainer = sqFtPerGallon * effectivePerContainer;
     return { gallonsNeeded, containersNeeded, sqFtPerGallon, sqFtPerContainer, wetMilWarning };
   };
@@ -1088,9 +1088,9 @@ export default function SprayFoamEstimator({ onAdmin }) {
             const calcs = calculateCoatingApplicationCost(foamApp, areaSqFtForCalcs);
             lineItems.push({
               name: `${area.name} - ${foamApp.coatingTypeName || 'Coating'}`,
-              description: `${foamApp.numContainers || 0} containers`,
-              quantity: foamApp.numContainers || 0,
-              unitPrice: foamApp.pricePerContainer || 0,
+              description: `${calcs.containers.toFixed(2)} containers`,
+              quantity: Math.round(calcs.containers * 100) / 100,
+              unitPrice: calcs.pricePerContainer || 0,
             });
             return;
           }
@@ -1279,7 +1279,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
   coatingBreakdownEntries.forEach(([name, info]) => {
     const userActual = actuals.actualCoatingGallonsByType?.[name];
     const effectiveGallons = (userActual !== undefined && userActual !== null) ? userActual : info.gallonsNeeded;
-    const containers = info.containerGallons > 0 ? Math.ceil(effectiveGallons / info.containerGallons) : 0;
+    const containers = info.containerGallons > 0 ? (effectiveGallons / info.containerGallons) : 0;
     actualCoatingMaterialCost += containers * info.pricePerContainer;
   });
   actualCoatingMaterialCost = Math.round(actualCoatingMaterialCost * 100) / 100;
@@ -2035,7 +2035,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                   {(cov.gallonsNeeded > 0 || coatingCalcs.containers > 0) && (
                                     <div className="mt-3 text-sm text-gray-600 bg-white p-2 rounded border border-purple-100 grid grid-cols-2 sm:grid-cols-5 gap-2">
                                       <span>Gallons: <strong>{cov.gallonsNeeded.toFixed(2)}</strong></span>
-                                      <span>Containers: <strong>{coatingCalcs.containers}</strong></span>
+                                      <span>Containers: <strong>{coatingCalcs.containers.toFixed(2)}</strong></span>
                                       <span>Base: <strong>${coatingCalcs.baseMaterialCost.toFixed(2)}</strong></span>
                                       <span>Markup: <strong>${coatingCalcs.markupAmount.toFixed(2)}</strong></span>
                                       <span>Total: <strong className="text-purple-700">${coatingCalcs.totalCost.toFixed(2)}</strong></span>
@@ -2645,7 +2645,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
                     {coatingBreakdownEntries.map(([name, info]) => (
                       <div key={name} className="flex justify-between py-1">
                         <span className="text-gray-600">{name}:</span>
-                        <span>{info.gallonsNeeded.toFixed(1)} gallons ({info.containers} containers)</span>
+                        <span>{info.gallonsNeeded.toFixed(1)} gallons ({info.containers.toFixed(2)} containers)</span>
                       </div>
                     ))}
                     <hr className="my-3" />
