@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
 
+const INVENTORY_SOURCE_LABELS = {
+  manual_addition: 'Manual Addition',
+  initial_seed: 'Initial Seed',
+  purchase_delivery: 'Purchase / Delivery',
+  job_surplus: 'Job Surplus',
+  inventory_commitment: 'Inventory Committed',
+  commitment_reversal: 'Commitment Reversed',
+  adjustment: 'Adjustment',
+};
+
 const Tooltip = ({ text }) => (
   <div className="group relative inline-block ml-1">
     <span className="cursor-help text-gray-400 hover:text-gray-600">
@@ -200,6 +210,16 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const [discountPercentInput, setDiscountPercentInput] = useState("");
   const [discountDollarFocused, setDiscountDollarFocused] = useState(false);
   const [discountPercentFocused, setDiscountPercentFocused] = useState(false);
+
+  const [inventorySummary, setInventorySummary] = useState([]);
+  const [inventoryCredits, setInventoryCredits] = useState({});
+  const [inventoryCreditsInputs, setInventoryCreditsInputs] = useState({});
+  const [inventoryCreditsFocused, setInventoryCreditsFocused] = useState({});
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [showInventoryPanel, setShowInventoryPanel] = useState(false);
+  const [surplusSubmitting, setSurplusSubmitting] = useState(false);
+  const [surplusSuccess, setSurplusSuccess] = useState('');
+  const [committedCredits, setCommittedCredits] = useState({});
   const [depositDollar, setDepositDollar] = useState(0);
   const [depositPercent, setDepositPercent] = useState(0);
   const [depositDollarInput, setDepositDollarInput] = useState("");
@@ -219,6 +239,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
     
     checkJobberStatus();
     loadAdminSettings();
+    loadInventorySummary();
     
     const params = new URLSearchParams(window.location.search);
     if (params.get('jobber_connected') === 'true') {
@@ -268,7 +289,167 @@ export default function SprayFoamEstimator({ onAdmin }) {
       console.error('Failed to load admin settings:', err);
     }
   };
-  
+
+  const loadInventorySummary = async () => {
+    setInventoryLoading(true);
+    try {
+      const response = await fetch('/api/inventory/summary');
+      const data = await response.json();
+      setInventorySummary(data.summary || []);
+    } catch (err) {
+      console.error('Failed to load inventory summary:', err);
+    } finally {
+      setInventoryLoading(false);
+    }
+  };
+
+  const computeSurplusGallons = () => {
+    const byType = new Map();
+    sprayAreas.forEach(area => {
+      area.foamApplications.forEach(foamApp => {
+        if (foamApp.applicationType === "Coating") return;
+        const id = foamApp.foamTypeId || (foamApp.foamTypeCategory === 'Closed' ? 'closed-cell' : 'open-cell');
+        const calcs = calculateFoamApplicationCost(area, foamApp);
+        const category = foamApp.foamTypeCategory || foamApp.foamType;
+        const existing = byType.get(id) || {
+          foamTypeId: id,
+          foamTypeName: foamApp.foamTypeName || `${category} Cell`,
+          category,
+          estimatedGallons: 0,
+          materialPrice: foamApp.materialPrice,
+          usableGallonsPerSet: foamApp.usableGallonsPerSet ?? 100,
+        };
+        existing.estimatedGallons += calcs.gallons || 0;
+        byType.set(id, existing);
+      });
+    });
+    const items = [];
+    byType.forEach(info => {
+      const actualGallons = info.category === 'Closed'
+        ? (actuals.actualClosedGallons ?? info.estimatedGallons)
+        : (actuals.actualOpenGallons ?? info.estimatedGallons);
+      const surplusGallons = info.estimatedGallons - actualGallons;
+      if (surplusGallons > 0) {
+        const usable = parseFloat(info.usableGallonsPerSet) || 100;
+        const costPerGallon = usable > 0 ? (parseFloat(info.materialPrice) || 0) / usable : 0;
+        items.push({
+          foamTypeId: info.foamTypeId,
+          foamTypeName: info.foamTypeName,
+          estimatedGallons: info.estimatedGallons,
+          actualGallons,
+          surplusGallons,
+          costPerGallon,
+        });
+      }
+    });
+    return items;
+  };
+
+  const submitSurplusToInventory = async (surplusItems) => {
+    setSurplusSubmitting(true);
+    try {
+      for (const item of surplusItems) {
+        await fetch('/api/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            material_type_id: item.foamTypeId,
+            material_type_name: item.foamTypeName,
+            material_category: 'foam',
+            gallons: item.surplusGallons,
+            inventory_unit: 'gallons',
+            cost_per_gallon: item.costPerGallon,
+            source: 'job_surplus',
+            source_estimate_name: estimateName || '',
+            source_job_date: completionDate || engagementDate || '',
+            notes: `Estimated ${item.estimatedGallons.toFixed(1)} gal, used ${item.actualGallons.toFixed(1)} gal`,
+          }),
+        });
+      }
+      await loadInventorySummary();
+      setSurplusSuccess(`Added ${surplusItems.length} surplus entry${surplusItems.length === 1 ? '' : 'ies'} to inventory.`);
+      setTimeout(() => setSurplusSuccess(''), 5000);
+    } catch (err) {
+      console.error('Submit surplus error:', err);
+    } finally {
+      setSurplusSubmitting(false);
+    }
+  };
+
+  const commitInventoryUsage = async () => {
+    const lines = Object.entries(inventoryCredits)
+      .filter(([, gals]) => gals > 0)
+      .map(([fid, gals]) => {
+        const summaryEntry = inventorySummary.find(s => s.material_type_id === fid);
+        const name = summaryEntry?.material_type_name || fid;
+        return `  • ${name}: ${gals.toFixed(1)} gal`;
+      });
+    if (lines.length === 0) return;
+    const message = `This will permanently deduct the following from inventory:\n${lines.join('\n')}\n\nOnly commit when this job is confirmed and scheduled. This cannot be undone without creating a reversal entry. Continue?`;
+    if (!window.confirm(message)) return;
+    try {
+      for (const [fid, gals] of Object.entries(inventoryCredits)) {
+        if (!gals || gals <= 0) continue;
+        const summaryEntry = inventorySummary.find(s => s.material_type_id === fid);
+        const name = summaryEntry?.material_type_name || fid;
+        await fetch('/api/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            material_type_id: fid,
+            material_type_name: name,
+            material_category: 'foam',
+            gallons: -Math.abs(gals),
+            inventory_unit: 'gallons',
+            source: 'inventory_commitment',
+            committed_at: new Date().toISOString(),
+            committed_to_estimate: estimateName || '',
+            source_estimate_name: estimateName || '',
+          }),
+        });
+      }
+      await loadInventorySummary();
+      setCommittedCredits({ ...inventoryCredits });
+      setSurplusSuccess('Inventory committed for this job.');
+      setTimeout(() => setSurplusSuccess(''), 5000);
+    } catch (err) {
+      console.error('Commit inventory error:', err);
+    }
+  };
+
+  const undoInventoryCommitment = async (foamTypeId) => {
+    const gals = committedCredits[foamTypeId];
+    if (!gals || gals <= 0) return;
+    const summaryEntry = inventorySummary.find(s => s.material_type_id === foamTypeId);
+    const name = summaryEntry?.material_type_name || foamTypeId;
+    if (!window.confirm(`This will create a reversal entry restoring ${gals.toFixed(1)} gal of ${name} to inventory. Continue?`)) return;
+    try {
+      await fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          material_type_id: foamTypeId,
+          material_type_name: name,
+          material_category: 'foam',
+          gallons: Math.abs(gals),
+          inventory_unit: 'gallons',
+          source: 'commitment_reversal',
+          source_estimate_name: estimateName || '',
+          notes: `Reversal of committed credit for estimate: ${estimateName || ''}`,
+        }),
+      });
+      await loadInventorySummary();
+      setCommittedCredits(prev => {
+        const next = { ...prev };
+        delete next[foamTypeId];
+        return next;
+      });
+      setInventoryCredits(prev => ({ ...prev, [foamTypeId]: gals }));
+    } catch (err) {
+      console.error('Undo commitment error:', err);
+    }
+  };
+
   const checkJobberStatus = async () => {
     try {
       const response = await fetch('/api/jobber/status');
@@ -386,7 +567,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
     return sqft;
   };
 
-  const calculateFoamApplicationCost = (area, foamApp) => {
+  const calculateFoamApplicationCost = (area, foamApp, ignoreCredits = false) => {
     const rawSqft = calculateEffectiveSqFt(area);
     const sqft = Math.round(rawSqft);
     const boardFeetPerInch = sqft;
@@ -395,7 +576,20 @@ export default function SprayFoamEstimator({ onAdmin }) {
     const gallons = sets * 100;
     const materialCostPct = foamApp.materialCostPct ?? 20;
     const materialCost = foamApp.materialPrice * (1 + materialCostPct / 100);
-    const baseMaterialCost = Math.round(sets * materialCost * 100) / 100;
+
+    const usableGals = parseFloat(foamApp.usableGallonsPerSet) || 100;
+    const credit = ignoreCredits ? 0 : (inventoryCredits[foamApp.foamTypeId] || 0);
+    const creditedGallons = Math.min(gallons, credit);
+    const paidGallons = gallons - creditedGallons;
+    let baseMaterialCost;
+    if (creditedGallons > 0) {
+      const costPerGallon = (parseFloat(foamApp.materialPrice) || 0) / usableGals;
+      const effectiveMaterialCost = paidGallons * costPerGallon * (1 + materialCostPct / 100);
+      baseMaterialCost = Math.round(effectiveMaterialCost * 100) / 100;
+    } else {
+      baseMaterialCost = Math.round(sets * materialCost * 100) / 100;
+    }
+
     const rawMarkup = baseMaterialCost * (foamApp.materialMarkup / 100);
     const rawTotal = baseMaterialCost + rawMarkup;
     const pricePerSqFt = sqft > 0 ? Math.round((rawTotal / sqft) * 100) / 100 : 0;
@@ -406,7 +600,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
     const rValuePerInch = category === "Closed" ? 7.2 : 3.8;
     const rValue = rValuePerInch * foamApp.foamThickness;
 
-    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost, rValue, pricePerSqFt };
+    return { sqft, gallons, sets, baseMaterialCost, markupAmount, totalCost, materialCost, rValue, pricePerSqFt, creditedGallons };
   };
 
   // Compute live coverage outputs for a coating application against an area's sq ft
@@ -1213,6 +1407,15 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const openCostPerGallon = totalGallons.open > 0 ? weightedOpenCostPerGallon / totalGallons.open : 0;
   const closedCostPerGallon = totalGallons.closed > 0 ? weightedClosedCostPerGallon / totalGallons.closed : 0;
 
+  const totalInventoryCreditGallons = Object.values(inventoryCredits).reduce((sum, g) => sum + (parseFloat(g) || 0), 0);
+  const totalInventoryCreditValue = Object.entries(inventoryCredits).reduce((sum, [fid, gals]) => {
+    const g = parseFloat(gals) || 0;
+    if (g <= 0) return sum;
+    const summaryEntry = inventorySummary.find(s => s.material_type_id === fid);
+    const cpg = summaryEntry?.avg_cost_per_gallon || 0;
+    return sum + g * cpg;
+  }, 0);
+
   // Per-coating-type breakdown for display + per-type actuals
   const coatingBreakdown = buildCoatingTypeBreakdown(sprayAreas);
   const coatingBreakdownEntries = Array.from(coatingBreakdown.entries());
@@ -1657,6 +1860,105 @@ export default function SprayFoamEstimator({ onAdmin }) {
                 })}
               </div>
               
+              {/* Inventory Credits Section */}
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowInventoryPanel(!showInventoryPanel)}
+                  className="flex items-center justify-between w-full text-left"
+                >
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    🪣 Apply Inventory Credits
+                    {totalInventoryCreditGallons > 0 && (
+                      <span className="ml-2 text-sm font-normal text-green-700">
+                        ({totalInventoryCreditGallons.toFixed(1)} gal applied, ~${totalInventoryCreditValue.toFixed(2)} saved)
+                      </span>
+                    )}
+                  </h3>
+                  <span className="text-gray-500">{showInventoryPanel ? '▲' : '▼'}</span>
+                </button>
+                {showInventoryPanel && (
+                  <div className="mt-4 space-y-3">
+                    {inventoryLoading && <p className="text-sm text-gray-500">Loading inventory…</p>}
+                    {!inventoryLoading && inventorySummary.length === 0 && (
+                      <p className="text-sm text-gray-500 italic">No inventory available. Add stock from the Admin Console → Inventory tab, or after job completion via the surplus panel below.</p>
+                    )}
+                    {inventorySummary.map(item => {
+                      const fid = item.material_type_id;
+                      const credit = inventoryCredits[fid] || 0;
+                      const inputVal = inventoryCreditsFocused[fid] ? (inventoryCreditsInputs[fid] ?? '') : (credit > 0 ? credit : '');
+                      const isCommitted = !!committedCredits[fid];
+                      return (
+                        <div key={fid} className="flex flex-wrap items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                          <div className="flex-1 min-w-[200px]">
+                            <div className="font-medium text-gray-900">{item.material_type_name}</div>
+                            <div className="text-xs text-gray-600">
+                              Available: {item.available_gallons.toFixed(1)} gal • Avg cost ${item.avg_cost_per_gallon.toFixed(2)}/gal
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="text-sm text-gray-700">Apply (gal):</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max={item.available_gallons}
+                              disabled={isCommitted}
+                              value={inputVal}
+                              onFocus={() => setInventoryCreditsFocused(p => ({ ...p, [fid]: true }))}
+                              onBlur={() => {
+                                setInventoryCreditsFocused(p => ({ ...p, [fid]: false }));
+                                const raw = inventoryCreditsInputs[fid];
+                                const n = parseFloat(raw);
+                                const clamped = isNaN(n) || n < 0 ? 0 : Math.min(n, item.available_gallons);
+                                setInventoryCredits(p => ({ ...p, [fid]: clamped }));
+                                setInventoryCreditsInputs(p => ({ ...p, [fid]: '' }));
+                              }}
+                              onChange={(e) => setInventoryCreditsInputs(p => ({ ...p, [fid]: e.target.value }))}
+                              className="w-24 border border-gray-300 p-1.5 rounded focus:ring-2 focus:ring-blue-500 disabled:bg-gray-200"
+                            />
+                            <button
+                              type="button"
+                              disabled={isCommitted}
+                              onClick={() => setInventoryCredits(p => ({ ...p, [fid]: item.available_gallons }))}
+                              className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-400"
+                            >
+                              Max
+                            </button>
+                            {isCommitted && (
+                              <button
+                                type="button"
+                                onClick={() => undoInventoryCommitment(fid)}
+                                className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
+                              >
+                                Undo Commit
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {totalInventoryCreditGallons > 0 && Object.keys(committedCredits).length === 0 && (
+                      <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <span className="text-sm text-blue-900">
+                          Ready to commit {totalInventoryCreditGallons.toFixed(1)} gal (~${totalInventoryCreditValue.toFixed(2)}) when this job is confirmed.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={commitInventoryUsage}
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                        >
+                          Commit Inventory
+                        </button>
+                      </div>
+                    )}
+                    {surplusSuccess && (
+                      <div className="p-2 bg-green-50 text-green-800 text-sm rounded">{surplusSuccess}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Discount Section */}
               <div className="mt-6 pt-4 border-t border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Discount</h3>
@@ -2535,6 +2837,46 @@ export default function SprayFoamEstimator({ onAdmin }) {
                 />
                 <span className="ml-2 text-sm font-medium text-gray-700">Labor and Material Confirmed</span>
               </div>
+
+              {actualsConfirmed && (() => {
+                const surplusItems = computeSurplusGallons();
+                if (surplusItems.length === 0) return null;
+                const totalSurplus = surplusItems.reduce((s, i) => s + i.surplusGallons, 0);
+                const totalValue = surplusItems.reduce((s, i) => s + i.surplusGallons * i.costPerGallon, 0);
+                return (
+                  <div className="mt-4 p-4 bg-amber-50 border border-amber-300 rounded-lg">
+                    <h4 className="font-semibold text-amber-900 mb-2">📦 Surplus Material Detected</h4>
+                    <p className="text-sm text-amber-800 mb-2">
+                      You used less material than estimated. Add the unused gallons to inventory for future jobs:
+                    </p>
+                    <ul className="text-sm text-amber-900 mb-3 ml-4 list-disc">
+                      {surplusItems.map(item => (
+                        <li key={item.foamTypeId}>
+                          <strong>{item.foamTypeName}:</strong> {item.surplusGallons.toFixed(1)} gal surplus
+                          (estimated {item.estimatedGallons.toFixed(1)}, used {item.actualGallons.toFixed(1)})
+                          — value ~${(item.surplusGallons * item.costPerGallon).toFixed(2)}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-amber-900">
+                        Total: {totalSurplus.toFixed(1)} gal (~${totalValue.toFixed(2)})
+                      </span>
+                      <button
+                        type="button"
+                        disabled={surplusSubmitting}
+                        onClick={() => submitSurplusToInventory(surplusItems)}
+                        className="px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 text-sm font-medium disabled:bg-gray-400"
+                      >
+                        {surplusSubmitting ? 'Adding…' : 'Add to Inventory'}
+                      </button>
+                    </div>
+                    {surplusSuccess && (
+                      <div className="mt-2 p-2 bg-green-100 text-green-800 text-sm rounded">{surplusSuccess}</div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

@@ -81,6 +81,16 @@ const DEFAULT_JOBBER_DESCRIPTIONS = {
   'labor': 'Includes a full-service spray foam insulation package: on-site evaluation, masking and surface prep, application at the specified thickness, and post-job cleanup. Designed to deliver maximum R-value, air sealing, and moisture control for residential or commercial projects.',
 };
 
+const INVENTORY_SOURCE_LABELS = {
+  manual_addition: 'Manual Addition',
+  initial_seed: 'Initial Seed',
+  purchase_delivery: 'Purchase / Delivery',
+  job_surplus: 'Job Surplus',
+  inventory_commitment: 'Inventory Committed',
+  commitment_reversal: 'Commitment Reversed',
+  adjustment: 'Adjustment',
+};
+
 async function initDatabase() {
   try {
     await pool.query(`
@@ -195,6 +205,36 @@ async function initDatabase() {
         await pool.query('UPDATE admin_settings SET settings = $1, updated_at = NOW() WHERE id = 1', [JSON.stringify(s)]);
       }
     }
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS material_inventory (
+        id SERIAL PRIMARY KEY,
+        material_type_id TEXT NOT NULL,
+        material_type_name TEXT NOT NULL,
+        material_category TEXT NOT NULL DEFAULT 'foam',
+        gallons NUMERIC(10,2) NOT NULL,
+        inventory_unit TEXT NOT NULL DEFAULT 'gallons',
+        container_type TEXT,
+        container_equivalent NUMERIC(10,4),
+        cost_per_gallon NUMERIC(10,2) NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'manual_addition'
+          CHECK (source IN (
+            'manual_addition',
+            'initial_seed',
+            'purchase_delivery',
+            'job_surplus',
+            'inventory_commitment',
+            'commitment_reversal',
+            'adjustment'
+          )),
+        committed_at TIMESTAMP,
+        committed_to_estimate TEXT,
+        source_estimate_name TEXT,
+        source_job_date TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
 
     console.log('Database initialized');
   } catch (err) {
@@ -731,6 +771,101 @@ app.put('/api/admin/settings', async (req, res) => {
     res.json({ settings: responseSettings });
   } catch (err) {
     console.error('Update admin settings error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/inventory', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM material_inventory ORDER BY created_at DESC');
+    res.json({ entries: result.rows });
+  } catch (err) {
+    console.error('Get inventory error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/inventory/summary', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        material_type_id,
+        MAX(material_type_name) AS material_type_name,
+        MAX(material_category) AS material_category,
+        SUM(gallons) AS available_gallons,
+        AVG(CASE WHEN gallons > 0 THEN cost_per_gallon END) AS avg_cost_per_gallon,
+        (SELECT inventory_unit FROM material_inventory mi2
+          WHERE mi2.material_type_id = mi.material_type_id
+          GROUP BY inventory_unit ORDER BY COUNT(*) DESC LIMIT 1) AS inventory_unit,
+        (SELECT container_type FROM material_inventory mi3
+          WHERE mi3.material_type_id = mi.material_type_id AND container_type IS NOT NULL
+          GROUP BY container_type ORDER BY COUNT(*) DESC LIMIT 1) AS container_type
+      FROM material_inventory mi
+      GROUP BY material_type_id
+      HAVING SUM(gallons) > 0
+      ORDER BY MAX(material_type_name)
+    `);
+    const summary = result.rows.map(r => ({
+      material_type_id: r.material_type_id,
+      material_type_name: r.material_type_name,
+      material_category: r.material_category,
+      available_gallons: parseFloat(r.available_gallons) || 0,
+      avg_cost_per_gallon: r.avg_cost_per_gallon != null ? parseFloat(r.avg_cost_per_gallon) : 0,
+      inventory_unit: r.inventory_unit || 'gallons',
+      container_type: r.container_type || null,
+    }));
+    res.json({ summary });
+  } catch (err) {
+    console.error('Get inventory summary error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/inventory', async (req, res) => {
+  try {
+    const {
+      material_type_id, material_type_name,
+      material_category = 'foam',
+      gallons,
+      inventory_unit = 'gallons',
+      container_type = null,
+      container_equivalent = null,
+      cost_per_gallon = 0,
+      source = 'manual_addition',
+      committed_at = null,
+      committed_to_estimate = null,
+      source_estimate_name = null,
+      source_job_date = null,
+      notes = null,
+    } = req.body || {};
+    if (!material_type_id || !material_type_name || gallons === undefined || gallons === null || gallons === '') {
+      return res.status(400).json({ error: 'material_type_id, material_type_name, and gallons are required' });
+    }
+    const result = await pool.query(`
+      INSERT INTO material_inventory
+        (material_type_id, material_type_name, material_category, gallons, inventory_unit,
+         container_type, container_equivalent, cost_per_gallon, source,
+         committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      RETURNING *
+    `, [
+      material_type_id, material_type_name, material_category, gallons, inventory_unit,
+      container_type, container_equivalent, cost_per_gallon, source,
+      committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes
+    ]);
+    res.json({ entry: result.rows[0] });
+  } catch (err) {
+    console.error('Insert inventory error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/inventory/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM material_inventory WHERE id = $1', [req.params.id]);
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error('Delete inventory error:', err);
     res.status(500).json({ error: err.message });
   }
 });

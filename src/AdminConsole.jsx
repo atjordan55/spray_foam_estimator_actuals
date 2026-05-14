@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
 
+const INVENTORY_SOURCE_LABELS = {
+  manual_addition: 'Manual Addition',
+  initial_seed: 'Initial Seed',
+  purchase_delivery: 'Purchase / Delivery',
+  job_surplus: 'Job Surplus',
+  inventory_commitment: 'Inventory Committed',
+  commitment_reversal: 'Commitment Reversed',
+  adjustment: 'Adjustment',
+};
+
 const inputClass = "w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm";
 const labelClass = "block text-xs font-medium text-gray-600 mb-1";
 const disabledInputClass = "w-full border border-gray-200 p-2 rounded-lg bg-gray-50 text-gray-500 text-sm cursor-not-allowed";
@@ -467,6 +477,80 @@ export default function AdminConsole({ onBack }) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
+  const [inventoryEntries, setInventoryEntries] = useState([]);
+  const [inventorySummary, setInventorySummary] = useState([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [newInventory, setNewInventory] = useState({
+    material_type_id: '',
+    gallons: '',
+    cost_per_gallon: '',
+    source: 'manual_addition',
+    notes: '',
+  });
+  const [inventoryMessage, setInventoryMessage] = useState('');
+
+  const loadInventory = async () => {
+    setInventoryLoading(true);
+    try {
+      const [entriesRes, summaryRes] = await Promise.all([
+        fetch('/api/inventory'),
+        fetch('/api/inventory/summary'),
+      ]);
+      const entriesData = await entriesRes.json();
+      const summaryData = await summaryRes.json();
+      setInventoryEntries(entriesData.entries || []);
+      setInventorySummary(summaryData.summary || []);
+    } catch (err) {
+      console.error('Load inventory error:', err);
+    } finally {
+      setInventoryLoading(false);
+    }
+  };
+
+  const handleAddInventory = async () => {
+    setInventoryMessage('');
+    const foamType = (settings.foamTypes || []).find(f => (f.id || f.productName || f.name) === newInventory.material_type_id);
+    if (!foamType || !newInventory.gallons) {
+      setInventoryMessage('Select a material and enter gallons.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          material_type_id: foamType.id || foamType.productName || foamType.name,
+          material_type_name: foamType.productName || foamType.name,
+          material_category: foamType.productCategory || 'foam',
+          gallons: parseFloat(newInventory.gallons),
+          inventory_unit: 'gallons',
+          container_type: foamType.containerType || null,
+          container_equivalent: foamType.usableGallonsPerSet ?? 100,
+          cost_per_gallon: parseFloat(newInventory.cost_per_gallon) || 0,
+          source: newInventory.source,
+          notes: newInventory.notes || null,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      setNewInventory({ material_type_id: '', gallons: '', cost_per_gallon: '', source: 'manual_addition', notes: '' });
+      setInventoryMessage('Inventory entry added.');
+      await loadInventory();
+      setTimeout(() => setInventoryMessage(''), 4000);
+    } catch (err) {
+      setInventoryMessage('Failed to add entry.');
+    }
+  };
+
+  const handleDeleteInventory = async (id) => {
+    if (!window.confirm('Delete this inventory entry? This will not create a reversal.')) return;
+    try {
+      await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
+      await loadInventory();
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
+  };
+
   const handleLogin = async () => {
     setLoginError('');
     try {
@@ -479,6 +563,7 @@ export default function AdminConsole({ onBack }) {
         setSessionPassword(password);
         setAuthenticated(true);
         loadSettings();
+        loadInventory();
       } else {
         setLoginError('Invalid password');
       }
@@ -661,6 +746,7 @@ export default function AdminConsole({ onBack }) {
     { id: 'labor', label: 'Labor' },
     { id: 'project', label: 'Project' },
     { id: 'commission', label: 'Commission' },
+    { id: 'inventory', label: '🪣 Inventory' },
     { id: 'jobberDesc', label: 'Jobber Descriptions' },
     { id: 'password', label: 'Password' },
   ];
@@ -863,6 +949,156 @@ export default function AdminConsole({ onBack }) {
               {settings.commission.tier2Rate}% at ≥{settings.commission.tier2Threshold}%. No commission below {settings.commission.tier1Threshold}%.
             </p>
           </SectionCard>
+        )}
+
+        {/* Inventory */}
+        {activeSection === 'inventory' && (
+          <div className="space-y-4">
+            <SectionCard title="Current Inventory">
+              {inventoryLoading ? (
+                <p className="text-sm text-gray-500">Loading…</p>
+              ) : inventorySummary.length === 0 ? (
+                <p className="text-sm text-gray-500 italic">No inventory on hand.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {inventorySummary.map(item => (
+                    <div key={item.material_type_id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                      <div className="font-medium text-gray-900">{item.material_type_name}</div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        {item.available_gallons.toFixed(1)} gal available
+                        {item.container_type ? ` (${item.container_type})` : ''}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Avg cost: ${item.avg_cost_per_gallon.toFixed(2)}/gal
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Est. value: ${(item.available_gallons * item.avg_cost_per_gallon).toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Add Inventory">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>Material</label>
+                  <select
+                    value={newInventory.material_type_id}
+                    onChange={(e) => setNewInventory(p => ({ ...p, material_type_id: e.target.value }))}
+                    className={inputClass}
+                  >
+                    <option value="">Select material…</option>
+                    {(settings.foamTypes || []).filter(f => f.active !== false).map(f => {
+                      const id = f.id || f.productName || f.name;
+                      return <option key={id} value={id}>{f.productName || f.name}</option>;
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Source</label>
+                  <select
+                    value={newInventory.source}
+                    onChange={(e) => setNewInventory(p => ({ ...p, source: e.target.value }))}
+                    className={inputClass}
+                  >
+                    <option value="manual_addition">Manual Addition</option>
+                    <option value="initial_seed">Initial Seed</option>
+                    <option value="purchase_delivery">Purchase / Delivery</option>
+                    <option value="adjustment">Adjustment</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Gallons (use negative for deductions)</label>
+                  <input
+                    type="number" step="0.1"
+                    value={newInventory.gallons}
+                    onChange={(e) => setNewInventory(p => ({ ...p, gallons: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Cost per Gallon ($)</label>
+                  <input
+                    type="number" step="0.01"
+                    value={newInventory.cost_per_gallon}
+                    onChange={(e) => setNewInventory(p => ({ ...p, cost_per_gallon: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={labelClass}>Notes</label>
+                  <input
+                    type="text"
+                    value={newInventory.notes}
+                    onChange={(e) => setNewInventory(p => ({ ...p, notes: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={handleAddInventory}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                >
+                  Add Entry
+                </button>
+                {inventoryMessage && <span className="text-sm text-gray-700">{inventoryMessage}</span>}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Transaction Ledger">
+              {inventoryEntries.length === 0 ? (
+                <p className="text-sm text-gray-500 italic">No transactions yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-600 border-b">
+                        <th className="py-2 pr-3">Date</th>
+                        <th className="py-2 pr-3">Material</th>
+                        <th className="py-2 pr-3 text-right">Gallons</th>
+                        <th className="py-2 pr-3 text-right">$/gal</th>
+                        <th className="py-2 pr-3">Source</th>
+                        <th className="py-2 pr-3">Estimate</th>
+                        <th className="py-2 pr-3">Notes</th>
+                        <th className="py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inventoryEntries.map(e => {
+                        const g = parseFloat(e.gallons) || 0;
+                        return (
+                          <tr key={e.id} className="border-b border-gray-100">
+                            <td className="py-2 pr-3 text-xs text-gray-600">
+                              {e.created_at ? new Date(e.created_at).toLocaleDateString() : ''}
+                            </td>
+                            <td className="py-2 pr-3">{e.material_type_name}</td>
+                            <td className={`py-2 pr-3 text-right ${g < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                              {g > 0 ? '+' : ''}{g.toFixed(1)}
+                            </td>
+                            <td className="py-2 pr-3 text-right">${parseFloat(e.cost_per_gallon || 0).toFixed(2)}</td>
+                            <td className="py-2 pr-3 text-xs">{INVENTORY_SOURCE_LABELS[e.source] || e.source}</td>
+                            <td className="py-2 pr-3 text-xs text-gray-600">{e.source_estimate_name || e.committed_to_estimate || ''}</td>
+                            <td className="py-2 pr-3 text-xs text-gray-600">{e.notes || ''}</td>
+                            <td className="py-2 text-right">
+                              <button
+                                onClick={() => handleDeleteInventory(e.id)}
+                                className="text-xs text-red-600 hover:text-red-800"
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
+          </div>
         )}
 
         {/* Jobber Descriptions */}
