@@ -28,6 +28,59 @@ const JOBBER_AUTH_URL = 'https://api.getjobber.com/api/oauth/authorize';
 const JOBBER_TOKEN_URL = 'https://api.getjobber.com/api/oauth/token';
 const JOBBER_API_URL = 'https://api.getjobber.com/api/graphql';
 
+const DEFAULT_FOAM_TYPES = [
+  {
+    id: 'open-cell',
+    name: 'Open Cell', productName: 'Open Cell',
+    productCategory: 'foam',
+    active: true,
+    category: 'Open',
+    containerType: '110-gallon set',
+    grossGallonsPerSet: 110,
+    usableGallonsPerSet: 100,
+    thicknessType: 'inch',
+    foamThickness: 6, defaultThicknessInches: 6,
+    foamCostPerSet: 1870, cost: 1870,
+    materialCostPct: 20,
+    boardFeetPerSet: 14000,
+    materialMarkup: 76.77, materialMarkupPercent: 76.77,
+    wasteFactorPercent: 0,
+    defaultPricePerSqFt: 1.70,
+    notes: '',
+  },
+  {
+    id: 'closed-cell',
+    name: 'Closed Cell', productName: 'Closed Cell',
+    productCategory: 'foam',
+    active: true,
+    category: 'Closed',
+    containerType: '110-gallon set',
+    grossGallonsPerSet: 110,
+    usableGallonsPerSet: 100,
+    thicknessType: 'inch',
+    foamThickness: 2, defaultThicknessInches: 2,
+    foamCostPerSet: 2300, cost: 2300,
+    materialCostPct: 20,
+    boardFeetPerSet: 4000,
+    materialMarkup: 66.67, materialMarkupPercent: 66.67,
+    wasteFactorPercent: 0,
+    defaultPricePerSqFt: 2.30,
+    notes: '',
+  }
+];
+
+const DEFAULT_JOBBER_DESCRIPTIONS = {
+  'General Area-Open': 'Spray foam insulation applied to general area surfaces. Provides air sealing, thermal resistance, and sound deadening.',
+  'General Area-Closed': 'Closed cell spray foam insulation applied to general area surfaces. Provides thermal barrier, moisture seal, and structural enhancement.',
+  'Exterior Walls-Open': 'Open cell spray foam insulation applied to exterior wall cavities. Provides air seal, sound deadening, and thermal resistance.',
+  'Exterior Walls-Closed': 'Closed cell spray foam insulation applied to exterior wall cavities. Provides thermal barrier, moisture seal, and structural enhancement.',
+  'Roof Deck-Open': 'Open cell spray foam insulation applied to roof deck. Provides air seal, sound deadening, and thermal resistance.',
+  'Roof Deck-Closed': 'Closed cell spray foam insulation applied to roof deck. Provides air seal, moisture barrier, and thermal resistance.',
+  'Gable-Open': 'Open cell spray foam insulation applied to gable area. Provides air seal and thermal resistance.',
+  'Gable-Closed': 'Closed cell spray foam insulation applied to gable area. Provides thermal barrier and moisture seal.',
+  'labor': 'Includes a full-service spray foam insulation package: on-site evaluation, masking and surface prep, application at the specified thickness, and post-job cleanup. Designed to deliver maximum R-value, air sealing, and moisture control for residential or commercial projects.',
+};
+
 async function initDatabase() {
   try {
     await pool.query(`
@@ -41,6 +94,108 @@ async function initDatabase() {
         CONSTRAINT single_row CHECK (id = 1)
       )
     `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS admin_settings (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        settings JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT admin_single_row CHECK (id = 1)
+      )
+    `);
+
+    const existing = await pool.query('SELECT settings FROM admin_settings WHERE id = 1');
+    if (existing.rows.length === 0) {
+      const defaultSettings = {
+        companyName: 'Eco Innovations',
+        adminPassword: 'admin123',
+        foamTypes: DEFAULT_FOAM_TYPES,
+        coatingTypes: [],
+        generator: { burnRate: 0.86, warmupHours: 1.0, cleanupHours: 0.5, truckMpg: 12, runtimeMultiplierDefault: 1.15 },
+        fuelMarkupPercent: 30,
+        wasteDisposalMarkupPercent: 30,
+        equipmentRentalMarkupPercent: 30,
+        jobberDescriptions: DEFAULT_JOBBER_DESCRIPTIONS,
+        labor: { laborRate: 65, laborMarkup: 40 },
+        project: { travelDistance: 50, travelRate: 0.70, wasteDisposal: 50, equipmentRental: 0 },
+        commission: { tier1Threshold: 30, tier1Rate: 10, tier2Threshold: 35, tier2Rate: 12 },
+      };
+      await pool.query('INSERT INTO admin_settings (id, settings) VALUES (1, $1)', [JSON.stringify(defaultSettings)]);
+    } else {
+      // Migrate existing settings to add new fields
+      const s = existing.rows[0].settings;
+      let changed = false;
+      if (!s.foamTypes) {
+        s.foamTypes = DEFAULT_FOAM_TYPES.map(ft => ({ ...ft }));
+        changed = true;
+      } else {
+        // Migrate each foam type to add new flexible profile fields with backward compat
+        s.foamTypes = s.foamTypes.map(ft => {
+          const updated = { ...ft };
+          let modified = false;
+          if (updated.productName === undefined) { updated.productName = updated.name || ''; modified = true; }
+          if (updated.name === undefined) { updated.name = updated.productName || ''; modified = true; }
+          if (updated.productCategory === undefined) { updated.productCategory = 'foam'; modified = true; }
+          if (updated.active === undefined) { updated.active = true; modified = true; }
+          if (updated.cost === undefined) { updated.cost = updated.foamCostPerSet ?? 0; modified = true; }
+          if (updated.foamCostPerSet === undefined) { updated.foamCostPerSet = updated.cost ?? 0; modified = true; }
+          if (updated.materialMarkupPercent === undefined) { updated.materialMarkupPercent = updated.materialMarkup ?? 0; modified = true; }
+          if (updated.materialMarkup === undefined) { updated.materialMarkup = updated.materialMarkupPercent ?? 0; modified = true; }
+          if (updated.wasteFactorPercent === undefined) { updated.wasteFactorPercent = 0; modified = true; }
+          if (updated.notes === undefined) { updated.notes = ''; modified = true; }
+          if (updated.containerType === undefined) { updated.containerType = '110-gallon set'; modified = true; }
+          if (updated.grossGallonsPerSet === undefined) { updated.grossGallonsPerSet = 110; modified = true; }
+          if (updated.usableGallonsPerSet === undefined) { updated.usableGallonsPerSet = 100; modified = true; }
+          if (updated.thicknessType === undefined) { updated.thicknessType = 'inch'; modified = true; }
+          if (updated.defaultThicknessInches === undefined) { updated.defaultThicknessInches = updated.foamThickness ?? 0; modified = true; }
+          if (updated.foamThickness === undefined) { updated.foamThickness = updated.defaultThicknessInches ?? 0; modified = true; }
+          if (modified) changed = true;
+          return updated;
+        });
+      }
+      if (!s.coatingTypes) { s.coatingTypes = []; changed = true; }
+      else {
+        // Migrate each coating type to add new flexible profile fields
+        s.coatingTypes = s.coatingTypes.map(ct => {
+          const updated = { ...ct };
+          let modified = false;
+          if (updated.productName === undefined) { updated.productName = updated.name || ''; modified = true; }
+          if (updated.name === undefined) { updated.name = updated.productName || ''; modified = true; }
+          if (updated.productCategory === undefined) { updated.productCategory = 'coating'; modified = true; }
+          if (updated.active === undefined) { updated.active = true; modified = true; }
+          if (updated.cost === undefined) { updated.cost = updated.foamCostPerContainer ?? 0; modified = true; }
+          if (updated.foamCostPerContainer === undefined) { updated.foamCostPerContainer = updated.cost ?? 0; modified = true; }
+          if (updated.materialMarkupPercent === undefined) { updated.materialMarkupPercent = updated.materialMarkup ?? 0; modified = true; }
+          if (updated.materialMarkup === undefined) { updated.materialMarkup = updated.materialMarkupPercent ?? 0; modified = true; }
+          if (updated.wasteFactorPercent === undefined) { updated.wasteFactorPercent = 0; modified = true; }
+          if (updated.notes === undefined) { updated.notes = ''; modified = true; }
+          if (updated.containerType === undefined) { updated.containerType = '5 gallon bucket'; modified = true; }
+          if (updated.containerGallons === undefined) { updated.containerGallons = 5; modified = true; }
+          if (updated.usableGallonsPerSet === undefined) { updated.usableGallonsPerSet = updated.containerGallons ?? 5; modified = true; }
+          if (updated.calculationMethod === undefined) { updated.calculationMethod = 'manualOverride'; modified = true; }
+          if (updated.thicknessType === undefined) { updated.thicknessType = 'none'; modified = true; }
+          if (updated.defaultThickness === undefined) { updated.defaultThickness = 0; modified = true; }
+          if (updated.sqFtPerGallon === undefined) { updated.sqFtPerGallon = 0; modified = true; }
+          if (updated.solidsByVolumePercent === undefined) { updated.solidsByVolumePercent = 0; modified = true; }
+          if (updated.maxSinglePassWetMils === undefined) { updated.maxSinglePassWetMils = 0; modified = true; }
+          if (updated.defaultPricePerSqFt === undefined) { updated.defaultPricePerSqFt = 0; modified = true; }
+          if (modified) changed = true;
+          return updated;
+        });
+      }
+      if (!s.generator) { s.generator = { burnRate: 0.86, warmupHours: 1.0, cleanupHours: 0.5, truckMpg: 12, runtimeMultiplierDefault: 1.15 }; changed = true; }
+      // Split combined additionalJobCostMarkupPct into 3 separate markup fields
+      const legacyMarkup = s.additionalJobCostMarkupPct ?? 30;
+      if (s.fuelMarkupPercent === undefined) { s.fuelMarkupPercent = legacyMarkup; changed = true; }
+      if (s.wasteDisposalMarkupPercent === undefined) { s.wasteDisposalMarkupPercent = legacyMarkup; changed = true; }
+      if (s.equipmentRentalMarkupPercent === undefined) { s.equipmentRentalMarkupPercent = legacyMarkup; changed = true; }
+      if (!s.jobberDescriptions) { s.jobberDescriptions = DEFAULT_JOBBER_DESCRIPTIONS; changed = true; }
+      if (changed) {
+        await pool.query('UPDATE admin_settings SET settings = $1, updated_at = NOW() WHERE id = 1', [JSON.stringify(s)]);
+      }
+    }
+
     console.log('Database initialized');
   } catch (err) {
     console.error('Database init error:', err);
@@ -445,7 +600,7 @@ app.get('/api/jobber/introspect-quote', async (req, res) => {
 
 app.post('/api/jobber/create-quote', async (req, res) => {
   try {
-    const { clientId, propertyId, title, lineItems, notes } = req.body;
+    const { clientId, propertyId, title, lineItems, notes, discount, deposit } = req.body;
     
     if (!propertyId) {
       throw new Error('Property ID is required to create a quote');
@@ -460,12 +615,14 @@ app.post('/api/jobber/create-quote', async (req, res) => {
     }));
     
     const createMutation = `
-      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [QuoteCreateLineItemAttributes!]!) {
+      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [QuoteCreateLineItemAttributes!]!, $discount: CostModifierAttributes, $deposit: CostModifierAttributes) {
         quoteCreate(attributes: {
           clientId: $clientId
           propertyId: $propertyId
           title: $title
           lineItems: $lineItems
+          discount: $discount
+          deposit: $deposit
         }) {
           quote {
             id
@@ -487,6 +644,20 @@ app.post('/api/jobber/create-quote', async (req, res) => {
       lineItems: formattedLineItems,
     };
     
+    if (discount && discount.rate > 0) {
+      variables.discount = {
+        rate: discount.rate,
+        type: discount.type,
+      };
+    }
+    
+    if (deposit && deposit.rate > 0) {
+      variables.deposit = {
+        rate: deposit.rate,
+        type: deposit.type,
+      };
+    }
+    
     console.log('Creating quote with variables:', JSON.stringify(variables, null, 2));
     
     const result = await jobberGraphQL(createMutation, variables);
@@ -498,6 +669,68 @@ app.post('/api/jobber/create-quote', async (req, res) => {
     res.json({ quote: result.quoteCreate.quote });
   } catch (err) {
     console.error('Create quote error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/settings', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT settings FROM admin_settings WHERE id = 1');
+    if (result.rows.length === 0) {
+      return res.json({ settings: null });
+    }
+    const settings = { ...result.rows[0].settings };
+    delete settings.adminPassword;
+    res.json({ settings });
+  } catch (err) {
+    console.error('Get admin settings error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/verify-password', async (req, res) => {
+  try {
+    const { password } = req.body;
+    const result = await pool.query('SELECT settings FROM admin_settings WHERE id = 1');
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'No settings configured' });
+    }
+    const settings = result.rows[0].settings;
+    if (settings.adminPassword === password) {
+      res.json({ verified: true });
+    } else {
+      res.status(401).json({ error: 'Invalid password' });
+    }
+  } catch (err) {
+    console.error('Verify password error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/settings', async (req, res) => {
+  try {
+    const { password, settings } = req.body;
+    const current = await pool.query('SELECT settings FROM admin_settings WHERE id = 1');
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'No settings found' });
+    }
+    if (current.rows[0].settings.adminPassword !== password) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    const updatedSettings = { ...settings, adminPassword: current.rows[0].settings.adminPassword };
+    if (settings.newPassword) {
+      updatedSettings.adminPassword = settings.newPassword;
+      delete updatedSettings.newPassword;
+    }
+    await pool.query(
+      'UPDATE admin_settings SET settings = $1, updated_at = NOW() WHERE id = 1',
+      [JSON.stringify(updatedSettings)]
+    );
+    const responseSettings = { ...updatedSettings };
+    delete responseSettings.adminPassword;
+    res.json({ settings: responseSettings });
+  } catch (err) {
+    console.error('Update admin settings error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
