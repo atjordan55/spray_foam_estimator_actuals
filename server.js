@@ -236,6 +236,15 @@ async function initDatabase() {
       )
     `);
 
+    await pool.query(`
+      ALTER TABLE material_inventory
+        ADD COLUMN IF NOT EXISTS a_side_gallons NUMERIC(10,2),
+        ADD COLUMN IF NOT EXISTS b_side_gallons NUMERIC(10,2),
+        ADD COLUMN IF NOT EXISTS ratio_percent NUMERIC(5,2),
+        ADD COLUMN IF NOT EXISTS batch_id TEXT,
+        ADD COLUMN IF NOT EXISTS drum_number TEXT
+    `);
+
     console.log('Database initialized');
   } catch (err) {
     console.error('Database init error:', err);
@@ -793,6 +802,8 @@ app.get('/api/inventory/summary', async (req, res) => {
         MAX(material_type_name) AS material_type_name,
         MAX(material_category) AS material_category,
         SUM(gallons) AS available_gallons,
+        SUM(a_side_gallons) AS total_a_side,
+        SUM(b_side_gallons) AS total_b_side,
         AVG(CASE WHEN gallons > 0 THEN cost_per_gallon END) AS avg_cost_per_gallon,
         (SELECT inventory_unit FROM material_inventory mi2
           WHERE mi2.material_type_id = mi.material_type_id
@@ -805,15 +816,28 @@ app.get('/api/inventory/summary', async (req, res) => {
       HAVING SUM(gallons) > 0
       ORDER BY MAX(material_type_name)
     `);
-    const summary = result.rows.map(r => ({
-      material_type_id: r.material_type_id,
-      material_type_name: r.material_type_name,
-      material_category: r.material_category,
-      available_gallons: parseFloat(r.available_gallons) || 0,
-      avg_cost_per_gallon: r.avg_cost_per_gallon != null ? parseFloat(r.avg_cost_per_gallon) : 0,
-      inventory_unit: r.inventory_unit || 'gallons',
-      container_type: r.container_type || null,
-    }));
+    const summary = result.rows.map(r => {
+      const total_a_side = r.total_a_side != null ? parseFloat(r.total_a_side) : null;
+      const total_b_side = r.total_b_side != null ? parseFloat(r.total_b_side) : null;
+      let is_balanced = false;
+      if (total_a_side != null && total_b_side != null && total_a_side > 0 && total_b_side > 0) {
+        const combined = total_a_side + total_b_side;
+        const diff = Math.abs(total_a_side - total_b_side);
+        is_balanced = combined > 0 && (diff / combined) <= 0.05;
+      }
+      return {
+        material_type_id: r.material_type_id,
+        material_type_name: r.material_type_name,
+        material_category: r.material_category,
+        available_gallons: parseFloat(r.available_gallons) || 0,
+        avg_cost_per_gallon: r.avg_cost_per_gallon != null ? parseFloat(r.avg_cost_per_gallon) : 0,
+        inventory_unit: r.inventory_unit || 'gallons',
+        container_type: r.container_type || null,
+        total_a_side,
+        total_b_side,
+        is_balanced,
+      };
+    });
     res.json({ summary });
   } catch (err) {
     console.error('Get inventory summary error:', err);
@@ -837,6 +861,11 @@ app.post('/api/inventory', async (req, res) => {
       source_estimate_name = null,
       source_job_date = null,
       notes = null,
+      a_side_gallons = null,
+      b_side_gallons = null,
+      ratio_percent = null,
+      batch_id = null,
+      drum_number = null,
     } = req.body || {};
     if (!material_type_id || !material_type_name || gallons === undefined || gallons === null || gallons === '') {
       return res.status(400).json({ error: 'material_type_id, material_type_name, and gallons are required' });
@@ -845,13 +874,15 @@ app.post('/api/inventory', async (req, res) => {
       INSERT INTO material_inventory
         (material_type_id, material_type_name, material_category, gallons, inventory_unit,
          container_type, container_equivalent, cost_per_gallon, source,
-         committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes,
+         a_side_gallons, b_side_gallons, ratio_percent, batch_id, drum_number)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
       RETURNING *
     `, [
       material_type_id, material_type_name, material_category, gallons, inventory_unit,
       container_type, container_equivalent, cost_per_gallon, source,
-      committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes
+      committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes,
+      a_side_gallons, b_side_gallons, ratio_percent, batch_id, drum_number
     ]);
     res.json({ entry: result.rows[0] });
   } catch (err) {

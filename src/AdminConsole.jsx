@@ -486,6 +486,10 @@ export default function AdminConsole({ onBack }) {
     cost_per_gallon: '',
     source: 'manual_addition',
     notes: '',
+    a_side_gallons: '',
+    b_side_gallons: '',
+    batch_id: '',
+    drum_number: '',
   });
   const [inventoryMessage, setInventoryMessage] = useState('');
 
@@ -529,10 +533,19 @@ export default function AdminConsole({ onBack }) {
           cost_per_gallon: parseFloat(newInventory.cost_per_gallon) || 0,
           source: newInventory.source,
           notes: newInventory.notes || null,
+          a_side_gallons: newInventory.a_side_gallons !== '' ? parseFloat(newInventory.a_side_gallons) : null,
+          b_side_gallons: newInventory.b_side_gallons !== '' ? parseFloat(newInventory.b_side_gallons) : null,
+          ratio_percent: (newInventory.a_side_gallons !== '' && newInventory.b_side_gallons !== '' &&
+                          (parseFloat(newInventory.a_side_gallons) + parseFloat(newInventory.b_side_gallons)) > 0)
+            ? (parseFloat(newInventory.a_side_gallons) /
+               (parseFloat(newInventory.a_side_gallons) + parseFloat(newInventory.b_side_gallons))) * 200
+            : null,
+          batch_id: newInventory.batch_id || null,
+          drum_number: newInventory.drum_number || null,
         }),
       });
       if (!res.ok) throw new Error('Failed');
-      setNewInventory({ material_type_id: '', gallons: '', cost_per_gallon: '', source: 'manual_addition', notes: '' });
+      setNewInventory({ material_type_id: '', gallons: '', cost_per_gallon: '', source: 'manual_addition', notes: '', a_side_gallons: '', b_side_gallons: '', batch_id: '', drum_number: '' });
       setInventoryMessage('Inventory entry added.');
       await loadInventory();
       setTimeout(() => setInventoryMessage(''), 4000);
@@ -961,21 +974,37 @@ export default function AdminConsole({ onBack }) {
                 <p className="text-sm text-gray-500 italic">No inventory on hand.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {inventorySummary.map(item => (
-                    <div key={item.material_type_id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
-                      <div className="font-medium text-gray-900">{item.material_type_name}</div>
-                      <div className="text-xs text-gray-600 mt-1">
-                        {item.available_gallons.toFixed(1)} gal available
-                        {item.container_type ? ` (${item.container_type})` : ''}
+                  {inventorySummary.map(item => {
+                    const hasAB = (item.total_a_side != null && item.total_a_side > 0) || (item.total_b_side != null && item.total_b_side > 0);
+                    const bothSides = item.total_a_side != null && item.total_b_side != null && item.total_a_side > 0 && item.total_b_side > 0;
+                    const dotColor = bothSides ? (item.is_balanced ? 'bg-green-500' : 'bg-amber-500') : '';
+                    const dotTitle = bothSides
+                      ? (item.is_balanced ? 'A and B sides are balanced (within 5%)' : 'A and B sides are imbalanced (>5% difference) — partial drum may be needed before spraying')
+                      : '';
+                    return (
+                      <div key={item.material_type_id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
+                        <div className="font-medium text-gray-900">{item.material_type_name}</div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          {item.available_gallons.toFixed(1)} gal available
+                          {item.container_type ? ` (${item.container_type})` : ''}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Avg cost: ${item.avg_cost_per_gallon.toFixed(2)}/gal
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Est. value: ${(item.available_gallons * item.avg_cost_per_gallon).toFixed(2)}
+                        </div>
+                        {hasAB && (
+                          <div className="text-xs text-gray-600 mt-1 flex items-center gap-1.5">
+                            {bothSides && (
+                              <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`} title={dotTitle}></span>
+                            )}
+                            <span>A: {(item.total_a_side || 0).toFixed(1)} gal · B: {(item.total_b_side || 0).toFixed(1)} gal</span>
+                          </div>
+                        )}
                       </div>
-                      <div className="text-xs text-gray-500">
-                        Avg cost: ${item.avg_cost_per_gallon.toFixed(2)}/gal
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        Est. value: ${(item.available_gallons * item.avg_cost_per_gallon).toFixed(2)}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </SectionCard>
@@ -1036,6 +1065,42 @@ export default function AdminConsole({ onBack }) {
                     className={inputClass}
                   />
                 </div>
+                <div>
+                  <label className={labelClass}>A-side / ISO Gallons (optional)</label>
+                  <input
+                    type="number" step="0.1"
+                    value={newInventory.a_side_gallons}
+                    onChange={(e) => setNewInventory(p => ({ ...p, a_side_gallons: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>B-side / Resin Gallons (optional)</label>
+                  <input
+                    type="number" step="0.1"
+                    value={newInventory.b_side_gallons}
+                    onChange={(e) => setNewInventory(p => ({ ...p, b_side_gallons: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Batch ID (optional)</label>
+                  <input
+                    type="text"
+                    value={newInventory.batch_id}
+                    onChange={(e) => setNewInventory(p => ({ ...p, batch_id: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Drum Number (optional)</label>
+                  <input
+                    type="text"
+                    value={newInventory.drum_number}
+                    onChange={(e) => setNewInventory(p => ({ ...p, drum_number: e.target.value }))}
+                    className={inputClass}
+                  />
+                </div>
               </div>
               <div className="mt-3 flex items-center gap-3">
                 <button
@@ -1063,6 +1128,10 @@ export default function AdminConsole({ onBack }) {
                         <th className="py-2 pr-3">Source</th>
                         <th className="py-2 pr-3">Estimate</th>
                         <th className="py-2 pr-3">Notes</th>
+                        <th className="py-2 pr-3 text-right">A-side</th>
+                        <th className="py-2 pr-3 text-right">B-side</th>
+                        <th className="py-2 pr-3 text-right">Ratio %</th>
+                        <th className="py-2 pr-3">Batch / Drum</th>
                         <th className="py-2"></th>
                       </tr>
                     </thead>
@@ -1082,6 +1151,18 @@ export default function AdminConsole({ onBack }) {
                             <td className="py-2 pr-3 text-xs">{INVENTORY_SOURCE_LABELS[e.source] || e.source}</td>
                             <td className="py-2 pr-3 text-xs text-gray-600">{e.source_estimate_name || e.committed_to_estimate || ''}</td>
                             <td className="py-2 pr-3 text-xs text-gray-600">{e.notes || ''}</td>
+                            <td className="py-2 pr-3 text-right text-xs text-gray-700">
+                              {e.a_side_gallons != null ? `${parseFloat(e.a_side_gallons).toFixed(1)}` : '—'}
+                            </td>
+                            <td className="py-2 pr-3 text-right text-xs text-gray-700">
+                              {e.b_side_gallons != null ? `${parseFloat(e.b_side_gallons).toFixed(1)}` : '—'}
+                            </td>
+                            <td className="py-2 pr-3 text-right text-xs text-gray-700">
+                              {e.ratio_percent != null ? `${parseFloat(e.ratio_percent).toFixed(1)}%` : '—'}
+                            </td>
+                            <td className="py-2 pr-3 text-xs text-gray-600">
+                              {(e.batch_id || e.drum_number) ? `${e.batch_id || '—'} / ${e.drum_number || '—'}` : '—'}
+                            </td>
                             <td className="py-2 text-right">
                               <button
                                 onClick={() => handleDeleteInventory(e.id)}

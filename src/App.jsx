@@ -165,6 +165,8 @@ const getDefaultState = () => ({
     actualLaborHours: null,
     actualOpenGallons: null,
     actualClosedGallons: null,
+    actualISOGallons: null,
+    actualResinGallons: null,
     actualCoatingGallonsByType: {},
     actualFuelCost: null,
     actualWasteDisposal: null,
@@ -348,6 +350,10 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const submitSurplusToInventory = async (surplusItems) => {
     setSurplusSubmitting(true);
     try {
+      const iso = actuals.actualISOGallons;
+      const resin = actuals.actualResinGallons;
+      const hasABData = iso != null && resin != null && (iso + resin) > 0;
+      const ratio = hasABData ? (iso / (iso + resin)) * 200 : null;
       for (const item of surplusItems) {
         await fetch('/api/inventory', {
           method: 'POST',
@@ -363,6 +369,9 @@ export default function SprayFoamEstimator({ onAdmin }) {
             source_estimate_name: estimateName || '',
             source_job_date: completionDate || engagementDate || '',
             notes: `Estimated ${item.estimatedGallons.toFixed(1)} gal, used ${item.actualGallons.toFixed(1)} gal`,
+            a_side_gallons: hasABData ? iso : null,
+            b_side_gallons: hasABData ? resin : null,
+            ratio_percent: ratio,
           }),
         });
       }
@@ -1183,6 +1192,8 @@ export default function SprayFoamEstimator({ onAdmin }) {
       actualLaborHours: data.actuals?.actualLaborHours ?? null,
       actualOpenGallons: data.actuals?.actualOpenGallons ?? null,
       actualClosedGallons: data.actuals?.actualClosedGallons ?? null,
+      actualISOGallons: data.actuals?.actualISOGallons ?? null,
+      actualResinGallons: data.actuals?.actualResinGallons ?? null,
       actualCoatingGallonsByType: data.actuals?.actualCoatingGallonsByType
         ?? (data.actuals?.actualCoatingGallons != null ? { Coating: data.actuals.actualCoatingGallons } : {}),
       actualFuelCost: data.actuals?.actualFuelCost ?? null,
@@ -1930,6 +1941,16 @@ export default function SprayFoamEstimator({ onAdmin }) {
                             <div className="text-xs text-gray-600">
                               Available: {item.available_gallons.toFixed(1)} gal • Avg cost ${item.avg_cost_per_gallon.toFixed(2)}/gal
                             </div>
+                            {((item.total_a_side != null && item.total_a_side > 0) || (item.total_b_side != null && item.total_b_side > 0)) && (
+                              <div className="text-xs text-gray-700 mt-0.5">
+                                A-side (ISO): {(item.total_a_side || 0).toFixed(1)} gal · B-side (Resin): {(item.total_b_side || 0).toFixed(1)} gal
+                              </div>
+                            )}
+                            {item.total_a_side != null && item.total_b_side != null && item.total_a_side > 0 && item.total_b_side > 0 && !item.is_balanced && (
+                              <div className="text-xs text-amber-700 mt-0.5">
+                                ⚠ Sides imbalanced — a fresh partial drum may be needed to balance ratio before spraying
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             <label className="text-sm text-gray-700">Apply (gal):</label>
@@ -2725,7 +2746,84 @@ export default function SprayFoamEstimator({ onAdmin }) {
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Actual ISO Gallons (A-side)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={actualsFocused.isoGallons
+                      ? (actualsInputs.isoGallons ?? "")
+                      : (actuals.actualISOGallons !== null
+                          ? (actuals.actualISOGallons === 0 ? "" : actuals.actualISOGallons.toFixed(1))
+                          : "")}
+                    onChange={(e) => setActualsInputs(prev => ({ ...prev, isoGallons: e.target.value }))}
+                    onFocus={() => {
+                      setActualsFocused(prev => ({ ...prev, isoGallons: true }));
+                      const currentVal = actuals.actualISOGallons;
+                      setActualsInputs(prev => ({ ...prev, isoGallons: currentVal != null && currentVal > 0 ? currentVal.toFixed(1) : "" }));
+                    }}
+                    onBlur={() => {
+                      setActualsFocused(prev => ({ ...prev, isoGallons: false }));
+                      if (actualsInputs.isoGallons !== undefined && actualsInputs.isoGallons !== "") {
+                        handleActualsChange("actualISOGallons", actualsInputs.isoGallons);
+                      }
+                      setActualsInputs(prev => {
+                        const updated = { ...prev };
+                        delete updated.isoGallons;
+                        return updated;
+                      });
+                    }}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Actual Resin Gallons (B-side)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={actualsFocused.resinGallons
+                      ? (actualsInputs.resinGallons ?? "")
+                      : (actuals.actualResinGallons !== null
+                          ? (actuals.actualResinGallons === 0 ? "" : actuals.actualResinGallons.toFixed(1))
+                          : "")}
+                    onChange={(e) => setActualsInputs(prev => ({ ...prev, resinGallons: e.target.value }))}
+                    onFocus={() => {
+                      setActualsFocused(prev => ({ ...prev, resinGallons: true }));
+                      const currentVal = actuals.actualResinGallons;
+                      setActualsInputs(prev => ({ ...prev, resinGallons: currentVal != null && currentVal > 0 ? currentVal.toFixed(1) : "" }));
+                    }}
+                    onBlur={() => {
+                      setActualsFocused(prev => ({ ...prev, resinGallons: false }));
+                      if (actualsInputs.resinGallons !== undefined && actualsInputs.resinGallons !== "") {
+                        handleActualsChange("actualResinGallons", actualsInputs.resinGallons);
+                      }
+                      setActualsInputs(prev => {
+                        const updated = { ...prev };
+                        delete updated.resinGallons;
+                        return updated;
+                      });
+                    }}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
               </div>
+              {actuals.actualISOGallons != null && actuals.actualResinGallons != null && actuals.actualISOGallons > 0 && actuals.actualResinGallons > 0 && (() => {
+                const ratio = (actuals.actualISOGallons / (actuals.actualISOGallons + actuals.actualResinGallons)) * 200;
+                let badgeColor = 'bg-red-100 text-red-800';
+                if (ratio >= 98 && ratio <= 102) badgeColor = 'bg-green-100 text-green-800';
+                else if ((ratio >= 95 && ratio < 98) || (ratio > 102 && ratio <= 105)) badgeColor = 'bg-yellow-100 text-yellow-800';
+                return (
+                  <div className="mt-3 flex items-center">
+                    <span className="text-sm font-medium text-gray-700 mr-2">Spray Ratio:</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${badgeColor}`}>
+                      {ratio.toFixed(1)}%
+                    </span>
+                    <Tooltip text="Spray foam requires equal volumes of ISO (A-side) and Resin (B-side). 100% indicates a perfect 1:1 ratio. Deviations may indicate off-ratio spray, flushing losses, or equipment issues that affect foam quality and yield." />
+                  </div>
+                );
+              })()}
               {coatingBreakdownEntries.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
                   {coatingBreakdownEntries.map(([name, info]) => {
