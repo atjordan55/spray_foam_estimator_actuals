@@ -14,7 +14,7 @@ module.exports = async function handler(req, res) {
   }
   
   try {
-    const { clientId, propertyId, title, lineItems, notes, discount, deposit } = req.body;
+    const { clientId, propertyId, title, lineItems, notes } = req.body;
     
     if (!propertyId) {
       throw new Error('Property ID is required to create a quote');
@@ -29,14 +29,12 @@ module.exports = async function handler(req, res) {
     }));
     
     const createMutation = `
-      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [QuoteCreateLineItemAttributes!]!, $discount: CostModifierAttributes, $deposit: CostModifierAttributes) {
+      mutation CreateQuote($clientId: EncodedId!, $propertyId: EncodedId!, $title: String, $lineItems: [QuoteCreateLineItemAttributes!]!) {
         quoteCreate(attributes: {
           clientId: $clientId
           propertyId: $propertyId
           title: $title
           lineItems: $lineItems
-          discount: $discount
-          deposit: $deposit
         }) {
           quote {
             id
@@ -57,20 +55,6 @@ module.exports = async function handler(req, res) {
       title: title || 'Spray Foam Estimate',
       lineItems: formattedLineItems,
     };
-    
-    if (discount && discount.rate > 0) {
-      variables.discount = {
-        rate: discount.rate,
-        type: discount.type,
-      };
-    }
-    
-    if (deposit && deposit.rate > 0) {
-      variables.deposit = {
-        rate: deposit.rate,
-        type: deposit.type,
-      };
-    }
     
     const result = await jobberGraphQL(createMutation, variables);
     
