@@ -1,0 +1,46 @@
+I'd like to make the following updates (Please summarize what you understand prior to committing changes:
+
+- Let's update the Source in Add Inventory to include Surplus Material
+
+- When creating a new estimate. The estimate will determine how much material is needed and calculate if current inventory is sufficient to meet demand. Actual deduction from the existing inventory total will only take place once the customer agrees to proceed and signs the estimate. If the amount of material needed for the job is not available notify user of the shortfall so they can see how much material to procure in order to complete the project. If there is surplus material available - only allow that type of inventory to be applied as inventory credits. 
+
+- Once job is completed and actuals are calculated update the inventory appropriately. If more material than estimated was used update the inventory by deducting the used material from the inventory total. If less material than estimated was used update the surplus material inventory.
+
+
+
+Let's clarify before proceeding.
+
+We have material in or inventory that falls into various categories but essentially:
+- It is material we paid for that hasn't yet been paid for by a job (Not Surplus Material)
+- It is material that is in excess from a job that has already paid for it (Surplus Material)
+
+For example we can have a total of 300 gallons of material in inventory
+- 200 gallons may fall into the (Not Surplus Material) category
+- 100 gallons may fall into the (Surplus Material) category
+
+We have 300 gallons of material but would treat 200 gallons of it differently than we would treat the remaining 100 gallons. 
+
+- Any gallons coming from the Surplus Material requires a commitment via 'Apply Inventory Credits'
+- When calculating gallons of material needed for a job vs what is in the inventory - always make the distinction by letting the user know how much would need to come from (Surplus Material 'Apply Inventory Credits') if there isn't enough (Not Surplus Material) to cover the job
+
+- Primary reason for using Surplus Material is to provide more competitive pricing for specific customers in cases where we deem it necessary to win the job
+
+- Secondary reason for using Surplus Material would be just to utilize the existing material inventory we have without having to order more prior to completing a job
+
+
+
+
+Estimate uses only non-surplus gallons:
+*Going over the estimated gallons - If surplus is available give option to use surplus inventory to offset overage - if there is no surplus or user chooses not to use surplus the overage is automatically taken from the non-surplus inventory
+*Going under the estimated gallons adds to the surplus inventory totals
+*Calculate the actuals profit margin according to outcome and selection.
+
+Estimate uses combination of surplus and non-surplus gallons:
+*Going over the estimated gallons - If surplus is available give option to use surplus inventory to offset overage - if there is no surplus or user chooses not to use surplus the overage is automatically taken from the non-surplus inventory
+*Going under the estimated gallons adds to or adds back to the surplus inventory totals
+*Calculate the actuals profit margin according to outcome and selection.
+
+Estimate uses only surplus gallons:
+*Going over the estimated gallons - If surplus is available give option to use surplus inventory to offset overage - if there is no surplus or user chooses not to use surplus the overage is automatically taken from the non-surplus inventory
+*Going under the estimated gallons adds back to the surplus inventory totals
+*Calculate the actuals profit margin according to outcome and selection.
