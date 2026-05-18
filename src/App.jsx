@@ -1929,17 +1929,33 @@ export default function SprayFoamEstimator({ onAdmin }) {
                     {!inventoryLoading && inventorySummary.length === 0 && (
                       <p className="text-sm text-gray-500 italic">No inventory available. Add stock from the Admin Console → Inventory tab, or after job completion via the surplus panel below.</p>
                     )}
+                    {!inventoryLoading && inventorySummary.length > 0 && (
+                      <p className="text-xs text-gray-600 italic">
+                        Inventory credits draw from <span className="font-semibold text-amber-700">Surplus only</span> ($0 cost basis, already paid for by a prior job). Non-surplus paid stock is never credited at $0.
+                      </p>
+                    )}
                     {inventorySummary.map(item => {
                       const fid = item.material_type_id;
                       const credit = inventoryCredits[fid] || 0;
                       const inputVal = inventoryCreditsFocused[fid] ? (inventoryCreditsInputs[fid] ?? '') : (credit > 0 ? credit : '');
                       const isCommitted = !!committedCredits[fid];
+                      const surplusAvail = item.available_surplus != null ? item.available_surplus : item.available_gallons;
+                      const nonSurplus = item.non_surplus_gallons != null ? item.non_surplus_gallons : 0;
+                      const totalGal = item.total_gallons != null ? item.total_gallons : (surplusAvail + nonSurplus);
                       return (
                         <div key={fid} className="flex flex-wrap items-center gap-3 p-3 bg-gray-50 rounded-lg">
                           <div className="flex-1 min-w-[200px]">
-                            <div className="font-medium text-gray-900">{item.material_type_name}</div>
-                            <div className="text-xs text-gray-600">
-                              Available: {item.available_gallons.toFixed(1)} gal • Avg cost ${item.avg_cost_per_gallon.toFixed(2)}/gal
+                            <div className="font-medium text-gray-900">
+                              {item.material_type_name}
+                              {surplusAvail > 0 && (
+                                <span className="ml-2 inline-block px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 rounded align-middle">SURPLUS AVAILABLE</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-700 mt-0.5 flex flex-wrap gap-x-3">
+                              <span><span className="font-medium">Non-Surplus:</span> {nonSurplus.toFixed(1)} gal</span>
+                              <span className="text-amber-800"><span className="font-medium">Surplus:</span> {surplusAvail.toFixed(1)} gal</span>
+                              <span className="text-gray-600"><span className="font-medium">Total:</span> {totalGal.toFixed(1)} gal</span>
+                              <span className="text-gray-500">• Replacement cost ${item.avg_cost_per_gallon.toFixed(2)}/gal</span>
                             </div>
                             {((item.total_a_side != null && item.total_a_side > 0) || (item.total_b_side != null && item.total_b_side > 0)) && (
                               <div className="text-xs text-gray-700 mt-0.5">

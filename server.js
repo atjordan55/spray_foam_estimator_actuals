@@ -223,6 +223,7 @@ async function initDatabase() {
             'initial_seed',
             'purchase_delivery',
             'job_surplus',
+            'surplus_material',
             'inventory_commitment',
             'commitment_reversal',
             'adjustment'
@@ -242,8 +243,85 @@ async function initDatabase() {
         ADD COLUMN IF NOT EXISTS b_side_gallons NUMERIC(10,2),
         ADD COLUMN IF NOT EXISTS ratio_percent NUMERIC(5,2),
         ADD COLUMN IF NOT EXISTS batch_id TEXT,
-        ADD COLUMN IF NOT EXISTS drum_number TEXT
+        ADD COLUMN IF NOT EXISTS drum_number TEXT,
+        ADD COLUMN IF NOT EXISTS is_surplus BOOLEAN NOT NULL DEFAULT false
     `);
+
+    // Update the source CHECK constraint to include 'surplus_material' if missing.
+    // Postgres can't ALTER a CHECK in place; drop & re-add.
+    try {
+      const conRes = await pool.query(`
+        SELECT con.conname, pg_get_constraintdef(con.oid) AS def
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        WHERE rel.relname = 'material_inventory' AND con.contype = 'c'
+      `);
+      for (const row of conRes.rows) {
+        if (row.def && row.def.includes('source') && !row.def.includes('surplus_material')) {
+          await pool.query(`ALTER TABLE material_inventory DROP CONSTRAINT ${row.conname}`);
+        }
+      }
+      await pool.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = 'material_inventory'::regclass
+              AND pg_get_constraintdef(oid) LIKE '%surplus_material%'
+          ) THEN
+            ALTER TABLE material_inventory
+              ADD CONSTRAINT material_inventory_source_check CHECK (source IN (
+                'manual_addition','initial_seed','purchase_delivery','job_surplus',
+                'surplus_material','inventory_commitment','commitment_reversal','adjustment'
+              ));
+          END IF;
+        END $$;
+      `);
+    } catch (err) {
+      console.error('Source check constraint update error:', err.message);
+    }
+
+    // Backfill: any existing rows that came in as job surplus should be flagged is_surplus.
+    await pool.query(`
+      UPDATE material_inventory
+      SET is_surplus = true
+      WHERE source IN ('job_surplus','surplus_material') AND is_surplus = false
+    `);
+
+    // Skeleton tables for Phase B (reservations) and Phase C (signed estimates).
+    // Created here so later phases don't need separate migrations.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS estimates (
+        id TEXT PRIMARY KEY,
+        estimate_name TEXT,
+        customer_name TEXT,
+        customer_email TEXT,
+        customer_phone TEXT,
+        signed_at TIMESTAMP,
+        signed_snapshot JSONB,
+        reconciled_at TIMESTAMP,
+        reconciled_snapshot JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS inventory_reservations (
+        id SERIAL PRIMARY KEY,
+        estimate_id TEXT NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
+        material_type_id TEXT NOT NULL,
+        material_type_name TEXT,
+        material_category TEXT,
+        gallons_surplus NUMERIC(10,2) NOT NULL DEFAULT 0,
+        gallons_non_surplus NUMERIC(10,2) NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'reserved'
+          CHECK (status IN ('reserved','committed','released','reconciled')),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_reservations_estimate ON inventory_reservations(estimate_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_reservations_material ON inventory_reservations(material_type_id, status)`);
 
     console.log('Database initialized');
   } catch (err) {
@@ -801,10 +879,12 @@ app.get('/api/inventory/summary', async (req, res) => {
         material_type_id,
         MAX(material_type_name) AS material_type_name,
         MAX(material_category) AS material_category,
-        SUM(gallons) AS available_gallons,
+        SUM(gallons) AS total_gallons,
+        SUM(CASE WHEN is_surplus THEN gallons ELSE 0 END) AS surplus_gallons,
+        SUM(CASE WHEN is_surplus THEN 0 ELSE gallons END) AS non_surplus_gallons,
         SUM(a_side_gallons) AS total_a_side,
         SUM(b_side_gallons) AS total_b_side,
-        AVG(CASE WHEN gallons > 0 THEN cost_per_gallon END) AS avg_cost_per_gallon,
+        AVG(CASE WHEN gallons > 0 AND NOT is_surplus THEN cost_per_gallon END) AS avg_cost_per_gallon,
         (SELECT inventory_unit FROM material_inventory mi2
           WHERE mi2.material_type_id = mi.material_type_id
           GROUP BY inventory_unit ORDER BY COUNT(*) DESC LIMIT 1) AS inventory_unit,
@@ -816,6 +896,28 @@ app.get('/api/inventory/summary', async (req, res) => {
       HAVING SUM(gallons) > 0
       ORDER BY MAX(material_type_name)
     `);
+
+    // Pull reserved gallons per material (for Phase B; safe in Phase A — returns 0).
+    let reservedMap = {};
+    try {
+      const resvRes = await pool.query(`
+        SELECT material_type_id,
+               SUM(gallons_non_surplus) AS reserved_non_surplus,
+               SUM(gallons_surplus) AS reserved_surplus
+        FROM inventory_reservations
+        WHERE status IN ('reserved','committed')
+        GROUP BY material_type_id
+      `);
+      for (const r of resvRes.rows) {
+        reservedMap[r.material_type_id] = {
+          reserved_non_surplus: parseFloat(r.reserved_non_surplus) || 0,
+          reserved_surplus: parseFloat(r.reserved_surplus) || 0,
+        };
+      }
+    } catch (e) {
+      // Table may not exist yet on very fresh deploys — treat as no reservations.
+    }
+
     const summary = result.rows.map(r => {
       const total_a_side = r.total_a_side != null ? parseFloat(r.total_a_side) : null;
       const total_b_side = r.total_b_side != null ? parseFloat(r.total_b_side) : null;
@@ -825,11 +927,24 @@ app.get('/api/inventory/summary', async (req, res) => {
         const diff = Math.abs(total_a_side - total_b_side);
         is_balanced = combined > 0 && (diff / combined) <= 0.05;
       }
+      const total_gallons = parseFloat(r.total_gallons) || 0;
+      const surplus_gallons = parseFloat(r.surplus_gallons) || 0;
+      const non_surplus_gallons = parseFloat(r.non_surplus_gallons) || 0;
+      const reserved = reservedMap[r.material_type_id] || { reserved_non_surplus: 0, reserved_surplus: 0 };
       return {
         material_type_id: r.material_type_id,
         material_type_name: r.material_type_name,
         material_category: r.material_category,
-        available_gallons: parseFloat(r.available_gallons) || 0,
+        // available_gallons kept for backwards compat with existing UI;
+        // restricted to surplus only per rule "paid stock is never credited at $0".
+        available_gallons: Math.max(0, surplus_gallons - reserved.reserved_surplus),
+        total_gallons,
+        surplus_gallons,
+        non_surplus_gallons,
+        reserved_surplus: reserved.reserved_surplus,
+        reserved_non_surplus: reserved.reserved_non_surplus,
+        available_surplus: Math.max(0, surplus_gallons - reserved.reserved_surplus),
+        available_non_surplus: Math.max(0, non_surplus_gallons - reserved.reserved_non_surplus),
         avg_cost_per_gallon: r.avg_cost_per_gallon != null ? parseFloat(r.avg_cost_per_gallon) : 0,
         inventory_unit: r.inventory_unit || 'gallons',
         container_type: r.container_type || null,
@@ -866,23 +981,32 @@ app.post('/api/inventory', async (req, res) => {
       ratio_percent = null,
       batch_id = null,
       drum_number = null,
+      is_surplus = false,
     } = req.body || {};
     if (!material_type_id || !material_type_name || gallons === undefined || gallons === null || gallons === '') {
       return res.status(400).json({ error: 'material_type_id, material_type_name, and gallons are required' });
+    }
+    // Surplus sources are always flagged is_surplus and have $0 cost basis
+    // (cost was already recovered from the prior job that generated the surplus).
+    let finalIsSurplus = !!is_surplus;
+    let finalCost = cost_per_gallon;
+    if (source === 'surplus_material' || source === 'job_surplus') {
+      finalIsSurplus = true;
+      finalCost = 0;
     }
     const result = await pool.query(`
       INSERT INTO material_inventory
         (material_type_id, material_type_name, material_category, gallons, inventory_unit,
          container_type, container_equivalent, cost_per_gallon, source,
          committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes,
-         a_side_gallons, b_side_gallons, ratio_percent, batch_id, drum_number)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         a_side_gallons, b_side_gallons, ratio_percent, batch_id, drum_number, is_surplus)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       RETURNING *
     `, [
       material_type_id, material_type_name, material_category, gallons, inventory_unit,
-      container_type, container_equivalent, cost_per_gallon, source,
+      container_type, container_equivalent, finalCost, source,
       committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes,
-      a_side_gallons, b_side_gallons, ratio_percent, batch_id, drum_number
+      a_side_gallons, b_side_gallons, ratio_percent, batch_id, drum_number, finalIsSurplus
     ]);
     res.json({ entry: result.rows[0] });
   } catch (err) {

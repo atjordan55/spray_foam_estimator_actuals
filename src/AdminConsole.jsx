@@ -5,6 +5,7 @@ const INVENTORY_SOURCE_LABELS = {
   initial_seed: 'Initial Seed',
   purchase_delivery: 'Purchase / Delivery',
   job_surplus: 'Job Surplus',
+  surplus_material: 'Surplus Material',
   inventory_commitment: 'Inventory Committed',
   commitment_reversal: 'Commitment Reversed',
   adjustment: 'Adjustment',
@@ -530,8 +531,9 @@ export default function AdminConsole({ onBack }) {
           inventory_unit: 'gallons',
           container_type: foamType.containerType || null,
           container_equivalent: foamType.usableGallonsPerSet ?? 100,
-          cost_per_gallon: parseFloat(newInventory.cost_per_gallon) || 0,
+          cost_per_gallon: newInventory.source === 'surplus_material' ? 0 : (parseFloat(newInventory.cost_per_gallon) || 0),
           source: newInventory.source,
+          is_surplus: newInventory.source === 'surplus_material',
           notes: newInventory.notes || null,
           a_side_gallons: newInventory.a_side_gallons !== '' ? parseFloat(newInventory.a_side_gallons) : null,
           b_side_gallons: newInventory.b_side_gallons !== '' ? parseFloat(newInventory.b_side_gallons) : null,
@@ -1029,14 +1031,28 @@ export default function AdminConsole({ onBack }) {
                   <label className={labelClass}>Source</label>
                   <select
                     value={newInventory.source}
-                    onChange={(e) => setNewInventory(p => ({ ...p, source: e.target.value }))}
+                    onChange={(e) => {
+                      const src = e.target.value;
+                      setNewInventory(p => ({
+                        ...p,
+                        source: src,
+                        // Surplus = already paid for by a prior job, so cost basis is $0.
+                        cost_per_gallon: src === 'surplus_material' ? '0' : p.cost_per_gallon,
+                      }));
+                    }}
                     className={inputClass}
                   >
                     <option value="manual_addition">Manual Addition</option>
                     <option value="initial_seed">Initial Seed</option>
                     <option value="purchase_delivery">Purchase / Delivery</option>
+                    <option value="surplus_material">Surplus Material</option>
                     <option value="adjustment">Adjustment</option>
                   </select>
+                  {newInventory.source === 'surplus_material' && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      Surplus material is tracked separately and used at $0 cost basis (paid for by a prior job).
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className={labelClass}>Gallons (use negative for deductions)</label>
@@ -1048,12 +1064,18 @@ export default function AdminConsole({ onBack }) {
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Cost per Gallon ($)</label>
+                  <label className={labelClass}>
+                    Cost per Gallon ($)
+                    {newInventory.source === 'surplus_material' && (
+                      <span className="ml-1 text-gray-400">(locked at $0 for surplus)</span>
+                    )}
+                  </label>
                   <input
                     type="number" step="0.01"
-                    value={newInventory.cost_per_gallon}
+                    value={newInventory.source === 'surplus_material' ? '0' : newInventory.cost_per_gallon}
+                    disabled={newInventory.source === 'surplus_material'}
                     onChange={(e) => setNewInventory(p => ({ ...p, cost_per_gallon: e.target.value }))}
-                    className={inputClass}
+                    className={`${inputClass} ${newInventory.source === 'surplus_material' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   />
                 </div>
                 <div className="sm:col-span-2">
@@ -1143,7 +1165,12 @@ export default function AdminConsole({ onBack }) {
                             <td className="py-2 pr-3 text-xs text-gray-600">
                               {e.created_at ? new Date(e.created_at).toLocaleDateString() : ''}
                             </td>
-                            <td className="py-2 pr-3">{e.material_type_name}</td>
+                            <td className="py-2 pr-3">
+                              {e.material_type_name}
+                              {e.is_surplus && (
+                                <span className="ml-2 inline-block px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 rounded">SURPLUS</span>
+                              )}
+                            </td>
                             <td className={`py-2 pr-3 text-right ${g < 0 ? 'text-red-600' : 'text-green-700'}`}>
                               {g > 0 ? '+' : ''}{g.toFixed(1)}
                             </td>
