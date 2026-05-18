@@ -1377,11 +1377,6 @@ export default function SprayFoamEstimator({ onAdmin }) {
                   Load
                   <input type="file" accept="application/json" onChange={loadEstimate} className="hidden" />
                 </label>
-                {onAdmin && (
-                  <button onClick={onAdmin} className="bg-slate-700 hover:bg-slate-800 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg font-medium transition-colors text-sm md:text-base">
-                    Admin
-                  </button>
-                )}
                 {jobberConnected ? (
                   <>
                     <button 
