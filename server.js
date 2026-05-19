@@ -226,6 +226,7 @@ async function initDatabase() {
             'surplus_material',
             'inventory_commitment',
             'commitment_reversal',
+            'reservation_reconciliation',
             'adjustment'
           )),
         committed_at TIMESTAMP,
@@ -257,7 +258,8 @@ async function initDatabase() {
         WHERE rel.relname = 'material_inventory' AND con.contype = 'c'
       `);
       for (const row of conRes.rows) {
-        if (row.def && row.def.includes('source') && !row.def.includes('surplus_material')) {
+        if (row.def && row.def.includes('source') &&
+            (!row.def.includes('surplus_material') || !row.def.includes('reservation_reconciliation'))) {
           await pool.query(`ALTER TABLE material_inventory DROP CONSTRAINT ${row.conname}`);
         }
       }
@@ -267,12 +269,13 @@ async function initDatabase() {
           IF NOT EXISTS (
             SELECT 1 FROM pg_constraint
             WHERE conrelid = 'material_inventory'::regclass
-              AND pg_get_constraintdef(oid) LIKE '%surplus_material%'
+              AND pg_get_constraintdef(oid) LIKE '%reservation_reconciliation%'
           ) THEN
             ALTER TABLE material_inventory
               ADD CONSTRAINT material_inventory_source_check CHECK (source IN (
                 'manual_addition','initial_seed','purchase_delivery','job_surplus',
-                'surplus_material','inventory_commitment','commitment_reversal','adjustment'
+                'surplus_material','inventory_commitment','commitment_reversal',
+                'reservation_reconciliation','adjustment'
               ));
           END IF;
         END $$;
@@ -322,6 +325,8 @@ async function initDatabase() {
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_reservations_estimate ON inventory_reservations(estimate_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_reservations_material ON inventory_reservations(material_type_id, status)`);
+    // Phase B: record the actual gallons consumed when a reservation is reconciled.
+    await pool.query(`ALTER TABLE inventory_reservations ADD COLUMN IF NOT EXISTS actual_gallons_used NUMERIC(10,2)`);
 
     console.log('Database initialized');
   } catch (err) {
@@ -1021,6 +1026,221 @@ app.delete('/api/inventory/:id', async (req, res) => {
     res.json({ deleted: true });
   } catch (err) {
     console.error('Delete inventory error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// Phase B — Estimates + Reservations
+// ============================================================
+
+// Upsert an estimate row (called when the user saves an estimate locally).
+app.post('/api/estimates', async (req, res) => {
+  try {
+    const { id, estimate_name = null, customer_name = null, customer_email = null, customer_phone = null } = req.body || {};
+    if (!id) return res.status(400).json({ error: 'id is required' });
+    const result = await pool.query(`
+      INSERT INTO estimates (id, estimate_name, customer_name, customer_email, customer_phone, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (id) DO UPDATE
+        SET estimate_name = EXCLUDED.estimate_name,
+            customer_name = EXCLUDED.customer_name,
+            customer_email = EXCLUDED.customer_email,
+            customer_phone = EXCLUDED.customer_phone,
+            updated_at = NOW()
+      RETURNING *
+    `, [id, estimate_name, customer_name, customer_email, customer_phone]);
+    res.json({ estimate: result.rows[0] });
+  } catch (err) {
+    console.error('Upsert estimate error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// List current reservations for one estimate.
+app.get('/api/estimates/:id/reservations', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM inventory_reservations WHERE estimate_id = $1 ORDER BY material_type_name`,
+      [req.params.id]
+    );
+    res.json({ reservations: result.rows });
+  } catch (err) {
+    console.error('Get reservations error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Replace this estimate's `reserved` rows with a fresh set built from the credit map.
+// Already-committed/reconciled rows for this estimate are left untouched.
+app.post('/api/estimates/:id/reservations', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const estimateId = req.params.id;
+    const { credits = {} } = req.body || {};
+    await client.query('BEGIN');
+    // Confirm estimate exists; create a stub row if missing so the FK is satisfied.
+    await client.query(
+      `INSERT INTO estimates (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`,
+      [estimateId]
+    );
+    // Clear prior 'reserved' rows; preserve committed/reconciled/released.
+    await client.query(
+      `DELETE FROM inventory_reservations WHERE estimate_id = $1 AND status = 'reserved'`,
+      [estimateId]
+    );
+    // Materials that already have a committed/reconciled row for this estimate must NOT get
+    // a duplicate 'reserved' row — that would double-count the same gallons.
+    const lockedRes = await client.query(
+      `SELECT material_type_id FROM inventory_reservations
+       WHERE estimate_id = $1 AND status IN ('committed','reconciled')`,
+      [estimateId]
+    );
+    const lockedMaterials = new Set(lockedRes.rows.map(r => r.material_type_id));
+    const inserted = [];
+    for (const [materialTypeId, gallonsRaw] of Object.entries(credits)) {
+      const gallons = parseFloat(gallonsRaw) || 0;
+      if (gallons <= 0) continue;
+      if (lockedMaterials.has(materialTypeId)) continue;
+      // Pull name + category from the most recent inventory row for this material.
+      const lookup = await client.query(
+        `SELECT material_type_name, material_category
+         FROM material_inventory
+         WHERE material_type_id = $1
+         ORDER BY id DESC LIMIT 1`,
+        [materialTypeId]
+      );
+      const name = lookup.rows[0]?.material_type_name || materialTypeId;
+      const category = lookup.rows[0]?.material_category || 'foam';
+      // Reservations always draw from surplus first (matches credit math).
+      const row = await client.query(
+        `INSERT INTO inventory_reservations
+           (estimate_id, material_type_id, material_type_name, material_category,
+            gallons_surplus, gallons_non_surplus, status, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 0, 'reserved', NOW())
+         RETURNING *`,
+        [estimateId, materialTypeId, name, category, gallons]
+      );
+      inserted.push(row.rows[0]);
+    }
+    await client.query('COMMIT');
+    res.json({ reservations: inserted });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Sync reservations error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// reserved → committed for this estimate's still-reserved rows.
+app.post('/api/estimates/:id/reservations/commit', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE inventory_reservations
+       SET status = 'committed', updated_at = NOW()
+       WHERE estimate_id = $1 AND status = 'reserved'
+       RETURNING *`,
+      [req.params.id]
+    );
+    res.json({ reservations: result.rows });
+  } catch (err) {
+    console.error('Commit reservations error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// reserved/committed → released for this estimate. Frees the gallons back to available stock.
+app.post('/api/estimates/:id/reservations/release', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE inventory_reservations
+       SET status = 'released', updated_at = NOW()
+       WHERE estimate_id = $1 AND status IN ('reserved','committed')
+       RETURNING *`,
+      [req.params.id]
+    );
+    res.json({ reservations: result.rows });
+  } catch (err) {
+    console.error('Release reservations error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// committed → reconciled. Writes a negative material_inventory row for each material with the
+// actual gallons consumed, drawing from the surplus pool ($0 cost basis), then marks the
+// reservation reconciled with the actual gallons stored.
+app.post('/api/estimates/:id/reservations/reconcile', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const estimateId = req.params.id;
+    const { actuals = {} } = req.body || {};
+    await client.query('BEGIN');
+    const estLookup = await client.query(`SELECT estimate_name FROM estimates WHERE id = $1`, [estimateId]);
+    const estimateName = estLookup.rows[0]?.estimate_name || '';
+    // Pull all still-open reservations for this estimate, locking them so a concurrent
+    // reconcile call can't double-deduct.
+    const resvRes = await client.query(
+      `SELECT * FROM inventory_reservations
+       WHERE estimate_id = $1 AND status IN ('reserved','committed')
+       FOR UPDATE`,
+      [estimateId]
+    );
+    const updates = [];
+    for (const r of resvRes.rows) {
+      const reservedGallons = parseFloat(r.gallons_surplus) || 0;
+      const actualUsedRaw = actuals[r.material_type_id];
+      const actualUsed = actualUsedRaw != null && !isNaN(parseFloat(actualUsedRaw))
+        ? Math.max(0, parseFloat(actualUsedRaw))
+        : reservedGallons;
+      // Deduct only the actual gallons consumed (cap at what was reserved so we don't over-draw).
+      const deductGallons = Math.min(actualUsed, reservedGallons);
+      if (deductGallons > 0) {
+        await client.query(`
+          INSERT INTO material_inventory
+            (material_type_id, material_type_name, material_category, gallons, inventory_unit,
+             cost_per_gallon, source, source_estimate_name, committed_to_estimate,
+             committed_at, is_surplus, notes)
+          VALUES ($1, $2, $3, $4, 'gallons', 0, 'reservation_reconciliation', $5, $5, NOW(), true, $6)
+        `, [
+          r.material_type_id, r.material_type_name, r.material_category,
+          -deductGallons, estimateName,
+          `Reconciled from reservation #${r.id} (reserved ${reservedGallons.toFixed(1)} gal, used ${actualUsed.toFixed(1)} gal)`
+        ]);
+      }
+      const upd = await client.query(
+        `UPDATE inventory_reservations
+         SET status = 'reconciled', actual_gallons_used = $1, updated_at = NOW()
+         WHERE id = $2 RETURNING *`,
+        [actualUsed, r.id]
+      );
+      updates.push(upd.rows[0]);
+    }
+    await client.query('COMMIT');
+    res.json({ reservations: updates });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Reconcile reservations error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Admin-wide list of reservations joined to their estimate name + customer.
+app.get('/api/reservations', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT r.*, e.estimate_name, e.customer_name
+      FROM inventory_reservations r
+      LEFT JOIN estimates e ON e.id = r.estimate_id
+      WHERE r.status IN ('reserved','committed')
+      ORDER BY r.created_at DESC
+    `);
+    res.json({ reservations: result.rows });
+  } catch (err) {
+    console.error('List reservations error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -179,6 +179,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const defaultState = getDefaultState();
   
   const [adminSettings, setAdminSettings] = useState(null);
+  const [estimateId, setEstimateId] = useState(null);
   const [estimateName, setEstimateName] = useState(defaultState.estimateName);
   const [customerInfo, setCustomerInfo] = useState(defaultState.customerInfo);
   const [engagementDate, setEngagementDate] = useState(defaultState.engagementDate);
@@ -401,6 +402,51 @@ export default function SprayFoamEstimator({ onAdmin }) {
     }
   };
 
+  // Generate-or-return a stable estimate id (UUID). Used as the FK for reservations.
+  const ensureEstimateId = () => {
+    if (estimateId) return estimateId;
+    const newId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `est_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    setEstimateId(newId);
+    return newId;
+  };
+
+  // Push the current estimate header + credit map to the server as reservations.
+  // Called from saveEstimate so reservations stay in sync with what's on screen.
+  const syncReservationsToServer = async (id) => {
+    if (!id) return;
+    try {
+      await fetch('/api/estimates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          estimate_name: estimateName || null,
+          customer_name: customerInfo?.name || null,
+          customer_email: customerInfo?.email || null,
+          customer_phone: customerInfo?.phone || null,
+        }),
+      });
+      // Only sync if there are no already-committed credits — once committed, the rows are locked
+      // and we shouldn't blow them away. (Committed state survives via the committedCredits map.)
+      if (Object.keys(committedCredits).length === 0) {
+        const creditsPayload = {};
+        Object.entries(inventoryCredits).forEach(([fid, gals]) => {
+          if (gals && gals > 0) creditsPayload[fid] = gals;
+        });
+        await fetch(`/api/estimates/${id}/reservations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credits: creditsPayload }),
+        });
+      }
+      await loadInventorySummary();
+    } catch (err) {
+      console.error('Sync reservations error:', err);
+    }
+  };
+
   const commitInventoryUsage = async () => {
     const lines = Object.entries(inventoryCredits)
       .filter(([, gals]) => gals > 0)
@@ -410,68 +456,89 @@ export default function SprayFoamEstimator({ onAdmin }) {
         return `  • ${name}: ${gals.toFixed(1)} gal`;
       });
     if (lines.length === 0) return;
-    const message = `This will permanently deduct the following from inventory:\n${lines.join('\n')}\n\nOnly commit when this job is confirmed and scheduled. This cannot be undone without creating a reversal entry. Continue?`;
+    const message = `This will lock in the following reservations for this job:\n${lines.join('\n')}\n\nOnly commit when this job is confirmed and scheduled. Stock will be formally deducted when you reconcile actuals after the job. Continue?`;
     if (!window.confirm(message)) return;
     try {
-      for (const [fid, gals] of Object.entries(inventoryCredits)) {
-        if (!gals || gals <= 0) continue;
-        const summaryEntry = inventorySummary.find(s => s.material_type_id === fid);
-        const name = summaryEntry?.material_type_name || fid;
-        await fetch('/api/inventory', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            material_type_id: fid,
-            material_type_name: name,
-            material_category: summaryEntry?.material_category || 'foam',
-            gallons: -Math.abs(gals),
-            inventory_unit: 'gallons',
-            source: 'inventory_commitment',
-            committed_at: new Date().toISOString(),
-            committed_to_estimate: estimateName || '',
-            source_estimate_name: estimateName || '',
-          }),
-        });
-      }
+      const id = ensureEstimateId();
+      // Make sure the latest credits are reserved server-side before flipping to committed.
+      await syncReservationsToServer(id);
+      const res = await fetch(`/api/estimates/${id}/reservations/commit`, { method: 'POST' });
+      if (!res.ok) throw new Error(`commit ${res.status}`);
       await loadInventorySummary();
       setCommittedCredits({ ...inventoryCredits });
-      setSurplusSuccess('Inventory committed for this job.');
+      setSurplusSuccess('Inventory committed for this job. Reconcile after the job finishes to deduct actuals.');
       setTimeout(() => setSurplusSuccess(''), 5000);
     } catch (err) {
       console.error('Commit inventory error:', err);
     }
   };
 
-  const undoInventoryCommitment = async (foamTypeId) => {
-    const gals = committedCredits[foamTypeId];
-    if (!gals || gals <= 0) return;
-    const summaryEntry = inventorySummary.find(s => s.material_type_id === foamTypeId);
-    const name = summaryEntry?.material_type_name || foamTypeId;
-    if (!window.confirm(`This will create a reversal entry restoring ${gals.toFixed(1)} gal of ${name} to inventory. Continue?`)) return;
+  const undoInventoryCommitment = async () => {
+    if (Object.keys(committedCredits).length === 0) return;
+    const total = Object.values(committedCredits).reduce((s, g) => s + (parseFloat(g) || 0), 0);
+    if (!window.confirm(`Release all reservations for this estimate (${total.toFixed(1)} gal total) back to available stock?`)) return;
     try {
-      await fetch('/api/inventory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          material_type_id: foamTypeId,
-          material_type_name: name,
-          material_category: summaryEntry?.material_category || 'foam',
-          gallons: Math.abs(gals),
-          inventory_unit: 'gallons',
-          source: 'commitment_reversal',
-          source_estimate_name: estimateName || '',
-          notes: `Reversal of committed credit for estimate: ${estimateName || ''}`,
-        }),
-      });
+      const id = ensureEstimateId();
+      const res = await fetch(`/api/estimates/${id}/reservations/release`, { method: 'POST' });
+      if (!res.ok) throw new Error(`release ${res.status}`);
       await loadInventorySummary();
-      setCommittedCredits(prev => {
-        const next = { ...prev };
-        delete next[foamTypeId];
-        return next;
-      });
-      setInventoryCredits(prev => ({ ...prev, [foamTypeId]: gals }));
+      const previouslyCommitted = { ...committedCredits };
+      setCommittedCredits({});
+      // Keep the credit amounts in the UI so the user can re-apply or commit them again.
+      setInventoryCredits(prev => ({ ...prev, ...previouslyCommitted }));
     } catch (err) {
       console.error('Undo commitment error:', err);
+    }
+  };
+
+  // Reconcile a committed estimate: send actual gallons used per material; server writes the
+  // negative inventory rows and flips reservations to 'reconciled'.
+  const reconcileInventoryFromActuals = async () => {
+    if (!estimateId || Object.keys(committedCredits).length === 0) return;
+    // Build actuals payload by foam type id, drawn from per-foam-type values when present,
+    // falling back to the global open/closed totals.
+    const actualsPayload = {};
+    const abByType = actuals.actualABByFoamType || {};
+    Object.keys(committedCredits).forEach(fid => {
+      const perType = abByType[fid];
+      let gals = null;
+      if (perType && (perType.iso != null || perType.resin != null)) {
+        const iso = parseFloat(perType.iso) || 0;
+        const resin = parseFloat(perType.resin) || 0;
+        gals = iso + resin;
+      } else {
+        // Fall back to global totals based on foam category.
+        const summaryEntry = inventorySummary.find(s => s.material_type_id === fid);
+        const cat = (summaryEntry?.material_category || '').toLowerCase();
+        if (cat.includes('closed') || fid.includes('closed')) {
+          gals = actuals.actualClosedGallons;
+        } else {
+          gals = actuals.actualOpenGallons;
+        }
+      }
+      if (gals != null) actualsPayload[fid] = gals;
+    });
+    const lines = Object.entries(actualsPayload).map(([fid, gals]) => {
+      const summaryEntry = inventorySummary.find(s => s.material_type_id === fid);
+      const name = summaryEntry?.material_type_name || fid;
+      const reserved = committedCredits[fid] || 0;
+      return `  • ${name}: reserved ${reserved.toFixed(1)} gal, used ${parseFloat(gals).toFixed(1)} gal`;
+    });
+    const message = `Reconcile this job? This permanently deducts the actual gallons used from inventory:\n${lines.join('\n')}\n\nAny reserved gallons not used will be released back to available stock.`;
+    if (!window.confirm(message)) return;
+    try {
+      const res = await fetch(`/api/estimates/${estimateId}/reservations/reconcile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actuals: actualsPayload }),
+      });
+      if (!res.ok) throw new Error(`reconcile ${res.status}`);
+      await loadInventorySummary();
+      setCommittedCredits({});
+      setSurplusSuccess('Inventory reconciled from actuals.');
+      setTimeout(() => setSurplusSuccess(''), 5000);
+    } catch (err) {
+      console.error('Reconcile error:', err);
     }
   };
 
@@ -1141,7 +1208,9 @@ export default function SprayFoamEstimator({ onAdmin }) {
   };
 
   const saveEstimate = () => {
+    const id = ensureEstimateId();
     const data = { 
+      id,
       estimateName, 
       customerInfo, 
       engagementDate,
@@ -1170,6 +1239,10 @@ export default function SprayFoamEstimator({ onAdmin }) {
     ];
     setRecentEstimates(newRecent);
     localStorage.setItem('recentEstimates', JSON.stringify(newRecent));
+
+    // Persist the estimate header + sync reservations on the server (fire-and-forget;
+    // errors are logged inside syncReservationsToServer).
+    syncReservationsToServer(id);
   };
 
   const loadEstimate = (e) => {
@@ -1225,6 +1298,30 @@ export default function SprayFoamEstimator({ onAdmin }) {
   };
 
   const applyEstimateData = (data) => {
+    const loadedId = data.id || null;
+    setEstimateId(loadedId);
+    setCommittedCredits({});
+    // If this estimate already has server-side reservations, fetch them so the UI lock
+    // (committedCredits + Release button) reflects current state.
+    if (loadedId) {
+      fetch(`/api/estimates/${loadedId}/reservations`)
+        .then(r => r.ok ? r.json() : { reservations: [] })
+        .then(({ reservations = [] }) => {
+          const committed = {};
+          const reserved = {};
+          reservations.forEach(r => {
+            const gals = parseFloat(r.gallons_surplus) || 0;
+            if (gals <= 0) return;
+            if (r.status === 'committed') committed[r.material_type_id] = gals;
+            else if (r.status === 'reserved') reserved[r.material_type_id] = gals;
+          });
+          if (Object.keys(committed).length > 0) setCommittedCredits(committed);
+          if (Object.keys(reserved).length > 0) {
+            setInventoryCredits(prev => ({ ...prev, ...reserved }));
+          }
+        })
+        .catch(err => console.error('Load reservations error:', err));
+    }
     setEstimateName(data.estimateName || "");
     setCustomerInfo(data.customerInfo || getDefaultState().customerInfo);
     setEngagementDate(data.engagementDate || "");
@@ -2102,13 +2199,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
                               Max
                             </button>
                             {isCommitted && (
-                              <button
-                                type="button"
-                                onClick={() => undoInventoryCommitment(fid)}
-                                className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
-                              >
-                                Undo Commit
-                              </button>
+                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded">Committed</span>
                             )}
                           </div>
                         </div>
@@ -2125,6 +2216,20 @@ export default function SprayFoamEstimator({ onAdmin }) {
                           className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
                         >
                           Commit Inventory
+                        </button>
+                      </div>
+                    )}
+                    {Object.keys(committedCredits).length > 0 && (
+                      <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
+                        <span className="text-sm text-amber-900">
+                          Inventory committed for this job. Reconcile from the Actuals section after the job is finished to deduct what was actually used.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={undoInventoryCommitment}
+                          className="px-3 py-1.5 bg-white border border-amber-400 text-amber-800 rounded hover:bg-amber-100 text-sm font-medium"
+                        >
+                          Release Commitment
                         </button>
                       </div>
                     )}
@@ -3189,6 +3294,25 @@ export default function SprayFoamEstimator({ onAdmin }) {
                   </div>
                 );
               })()}
+
+              {actualsConfirmed && Object.keys(committedCredits).length > 0 && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-300 rounded-lg">
+                  <h4 className="font-semibold text-blue-900 mb-2">Reconcile Inventory</h4>
+                  <p className="text-sm text-blue-800 mb-3">
+                    This estimate has {Object.values(committedCredits).reduce((s, g) => s + (parseFloat(g) || 0), 0).toFixed(1)} gal of committed inventory.
+                    Reconcile now to deduct the actual gallons used from stock and release any over-reserved gallons.
+                  </p>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={reconcileInventoryFromActuals}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                    >
+                      Reconcile Inventory from Actuals
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

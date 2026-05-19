@@ -480,6 +480,7 @@ export default function AdminConsole({ onBack }) {
 
   const [inventoryEntries, setInventoryEntries] = useState([]);
   const [inventorySummary, setInventorySummary] = useState([]);
+  const [inventoryReservations, setInventoryReservations] = useState([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [newInventory, setNewInventory] = useState({
     material_type_id: '',
@@ -497,18 +498,32 @@ export default function AdminConsole({ onBack }) {
   const loadInventory = async () => {
     setInventoryLoading(true);
     try {
-      const [entriesRes, summaryRes] = await Promise.all([
+      const [entriesRes, summaryRes, reservationsRes] = await Promise.all([
         fetch('/api/inventory'),
         fetch('/api/inventory/summary'),
+        fetch('/api/reservations'),
       ]);
       const entriesData = await entriesRes.json();
       const summaryData = await summaryRes.json();
+      const reservationsData = reservationsRes.ok ? await reservationsRes.json() : { reservations: [] };
       setInventoryEntries(entriesData.entries || []);
       setInventorySummary(summaryData.summary || []);
+      setInventoryReservations(reservationsData.reservations || []);
     } catch (err) {
       console.error('Load inventory error:', err);
     } finally {
       setInventoryLoading(false);
+    }
+  };
+
+  const releaseReservation = async (estimateId) => {
+    if (!estimateId) return;
+    if (!window.confirm('Release all reservations for this estimate back to available stock?')) return;
+    try {
+      await fetch(`/api/estimates/${estimateId}/reservations/release`, { method: 'POST' });
+      await loadInventory();
+    } catch (err) {
+      console.error('Release reservation error:', err);
     }
   };
 
@@ -1236,6 +1251,61 @@ export default function AdminConsole({ onBack }) {
                                 className="text-xs text-red-600 hover:text-red-800"
                               >
                                 Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Active Reservations">
+              <p className="text-sm text-gray-500 mb-3">
+                Inventory reserved by open estimates. These gallons are subtracted from available stock until the estimate is reconciled or released.
+              </p>
+              {inventoryReservations.length === 0 ? (
+                <p className="text-sm text-gray-500 italic">No active reservations.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-600 border-b">
+                        <th className="py-2 pr-3">Created</th>
+                        <th className="py-2 pr-3">Estimate</th>
+                        <th className="py-2 pr-3">Customer</th>
+                        <th className="py-2 pr-3">Material</th>
+                        <th className="py-2 pr-3 text-right">Gallons</th>
+                        <th className="py-2 pr-3">Status</th>
+                        <th className="py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inventoryReservations.map(r => {
+                        const gals = (parseFloat(r.gallons_surplus) || 0) + (parseFloat(r.gallons_non_surplus) || 0);
+                        const statusColor = r.status === 'committed'
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-gray-100 text-gray-700';
+                        return (
+                          <tr key={r.id} className="border-b border-gray-100">
+                            <td className="py-2 pr-3 text-xs text-gray-600">
+                              {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
+                            </td>
+                            <td className="py-2 pr-3">{r.estimate_name || r.estimate_id?.slice(0, 8) || '—'}</td>
+                            <td className="py-2 pr-3 text-gray-700">{r.customer_name || '—'}</td>
+                            <td className="py-2 pr-3">{r.material_type_name}</td>
+                            <td className="py-2 pr-3 text-right">{gals.toFixed(1)}</td>
+                            <td className="py-2 pr-3">
+                              <span className={`inline-block px-2 py-0.5 text-xs rounded ${statusColor}`}>{r.status}</span>
+                            </td>
+                            <td className="py-2 text-right">
+                              <button
+                                onClick={() => releaseReservation(r.estimate_id)}
+                                className="text-xs text-red-600 hover:text-red-800"
+                              >
+                                Release
                               </button>
                             </td>
                           </tr>
