@@ -1,7 +1,7 @@
 import './index.css';
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import SprayFoamEstimator from './App.jsx';
+import SprayFoamEstimator from './Estimator.jsx';
 import AdminConsole from './AdminConsole.jsx';
 
 function App() {
