@@ -702,20 +702,31 @@ export default function SprayFoamEstimator({ onAdmin }) {
         if (app.applicationType !== "Coating") return;
         const cc = calculateCoatingApplicationCost(app, sqft);
         const name = (app.coatingTypeName && app.coatingTypeName.trim()) || "Coating";
+        const usable = parseFloat(app.usableGallonsPerSet) || 0;
+        const container = parseFloat(app.containerGallons) || 0;
         const existing = map.get(name) || {
           gallonsNeeded: 0,
           containers: 0,
           baseMaterialCost: 0,
           markupAmount: 0,
-          containerGallons: parseFloat(app.containerGallons) || 0,
+          containerGallons: container,
+          usableGallonsPerSet: usable > 0 ? usable : container,
           pricePerContainer: cc.pricePerContainer || 0,
+          coatingTypeId: app.coatingTypeId || null,
+          materialMarkupPct: parseFloat(app.materialMarkup) || 0,
+          totalGallonsEstimated: 0,
+          creditedGallonsEstimated: 0,
         };
         existing.gallonsNeeded += cc.coverage.gallonsNeeded || 0;
         existing.containers += cc.containers || 0;
         existing.baseMaterialCost += cc.baseMaterialCost;
         existing.markupAmount += cc.markupAmount;
-        if (parseFloat(app.containerGallons) > 0) existing.containerGallons = parseFloat(app.containerGallons);
+        existing.totalGallonsEstimated += cc.totalGallons || 0;
+        existing.creditedGallonsEstimated += cc.creditedGallons || 0;
+        if (container > 0) existing.containerGallons = container;
+        if (usable > 0) existing.usableGallonsPerSet = usable;
         if (cc.pricePerContainer > 0) existing.pricePerContainer = cc.pricePerContainer;
+        if (app.coatingTypeId) existing.coatingTypeId = app.coatingTypeId;
         map.set(name, existing);
       });
     });
@@ -1579,13 +1590,24 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const effectiveActualWasteDisposal = actuals.actualWasteDisposal ?? globalInputs.wasteDisposal;
   const effectiveActualEquipmentRental = actuals.actualEquipmentRental ?? globalInputs.equipmentRental;
 
-  // Per-coating-type actual material cost: ceil(actualGallons / containerGallons) × pricePerContainer
+  // Per-coating-type actual material cost. Mirrors estimated math so identical inputs produce identical
+  // costs: divisor is usableGallonsPerSet (waste embedded), and surplus credits are applied proportionally.
   let actualCoatingMaterialCost = 0;
   coatingBreakdownEntries.forEach(([name, info]) => {
     const userActual = actuals.actualCoatingGallonsByType?.[name];
-    const effectiveGallons = (userActual !== undefined && userActual !== null) ? userActual : info.gallonsNeeded;
-    const containers = info.containerGallons > 0 ? (effectiveGallons / info.containerGallons) : 0;
-    actualCoatingMaterialCost += containers * info.pricePerContainer;
+    // Use totalGallonsEstimated (containers × usableGals) as the fallback so manual-override coatings
+    // — which have coverage.gallonsNeeded === 0 — still match the estimate when actuals are untouched.
+    const estimatedGallons = info.totalGallonsEstimated > 0 ? info.totalGallonsEstimated : info.gallonsNeeded;
+    const effectiveGallons = (userActual !== undefined && userActual !== null) ? userActual : estimatedGallons;
+    const divisor = info.usableGallonsPerSet > 0 ? info.usableGallonsPerSet : info.containerGallons;
+    const containers = divisor > 0 ? (effectiveGallons / divisor) : 0;
+    const fullCost = containers * info.pricePerContainer;
+    // Apply credit symmetrically with the estimate: credited gallons cap at actual gallons, paid fraction
+    // = (actualGallons - creditedGallons) / actualGallons.
+    const creditAvail = (info.coatingTypeId && inventoryCredits[info.coatingTypeId]) ? (parseFloat(inventoryCredits[info.coatingTypeId]) || 0) : 0;
+    const creditedGallons = Math.min(effectiveGallons, creditAvail);
+    const paidFraction = effectiveGallons > 0 ? (effectiveGallons - creditedGallons) / effectiveGallons : 1;
+    actualCoatingMaterialCost += fullCost * paidFraction;
   });
   actualCoatingMaterialCost = Math.round(actualCoatingMaterialCost * 100) / 100;
   const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon + actualCoatingMaterialCost) * 100) / 100;
@@ -2473,14 +2495,31 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                     <div>
                                       <label className="block text-sm font-medium text-gray-700 mb-1">
                                         Price ($/Sq Ft)
-                                        <Tooltip text="Editable. Changing this updates Material Markup % and the live totals below." />
+                                        <Tooltip text="Editable. Changing this updates Material Markup % and the live totals below. When a surplus credit is applied for this coating, the displayed value reflects the credited (discounted) price." />
                                       </label>
-                                      <input
-                                        type="number" step="0.001" min="0"
-                                        value={foamApp.defaultPricePerSqFt || ""}
-                                        onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'defaultPricePerSqFt', e.target.value)}
-                                        className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      />
+                                      {(() => {
+                                        const creditApplied = foamApp.coatingTypeId && (parseFloat(inventoryCredits[foamApp.coatingTypeId]) || 0) > 0;
+                                        const displayedPricePerSqFt = (creditApplied && areaSqFtForCoating > 0)
+                                          ? (coatingCalcs.totalCost / areaSqFtForCoating)
+                                          : (parseFloat(foamApp.defaultPricePerSqFt) || 0);
+                                        return (
+                                          <>
+                                            <input
+                                              type="number" step="0.001" min="0"
+                                              value={creditApplied
+                                                ? (displayedPricePerSqFt > 0 ? displayedPricePerSqFt.toFixed(3) : "")
+                                                : (foamApp.defaultPricePerSqFt || "")}
+                                              onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'defaultPricePerSqFt', e.target.value)}
+                                              readOnly={creditApplied}
+                                              title={creditApplied ? "Clear the surplus credit for this coating to edit price." : ""}
+                                              className={`w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${creditApplied ? 'border-gray-200 bg-gray-100 text-gray-700 cursor-not-allowed' : 'border-gray-300'}`}
+                                            />
+                                            {creditApplied && (
+                                              <p className="text-xs text-amber-700 mt-1">Credited price shown (surplus applied). Clear credit to edit.</p>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
                                     </div>
                                   </div>
                                   {cov.wetMilWarning && (
@@ -2969,7 +3008,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
                   {coatingBreakdownEntries.map(([name, info]) => {
                     const inputKey = `coatingGallons_${name}`;
                     const stored = actuals.actualCoatingGallonsByType?.[name];
-                    const fallback = info.gallonsNeeded;
+                    const fallback = info.totalGallonsEstimated > 0 ? info.totalGallonsEstimated : info.gallonsNeeded;
                     return (
                       <div key={name}>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Actual {name} Gallons</label>
