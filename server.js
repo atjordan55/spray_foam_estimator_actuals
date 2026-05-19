@@ -1057,6 +1057,79 @@ app.post('/api/estimates', async (req, res) => {
   }
 });
 
+// Fetch a single estimate row (used by the frontend to rehydrate signed status on load).
+app.get('/api/estimates/:id', async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT * FROM estimates WHERE id = $1`, [req.params.id]);
+    res.json({ estimate: result.rows[0] || null });
+  } catch (err) {
+    console.error('Get estimate error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mark an estimate as signed. Stamps signed_at and atomically flips all
+// 'reserved' rows for this estimate to 'committed' (the inventory lock-in).
+app.post('/api/estimates/:id/sign', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const estimateId = req.params.id;
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO estimates (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`,
+      [estimateId]
+    );
+    const est = await client.query(
+      `UPDATE estimates SET signed_at = NOW(), updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [estimateId]
+    );
+    await client.query(
+      `UPDATE inventory_reservations
+       SET status = 'committed', updated_at = NOW()
+       WHERE estimate_id = $1 AND status = 'reserved'`,
+      [estimateId]
+    );
+    await client.query('COMMIT');
+    res.json({ estimate: est.rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Sign estimate error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Reverse "Mark as Signed": clears signed_at and releases reservations so the
+// estimate can be edited freely again.
+app.post('/api/estimates/:id/unsign', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const estimateId = req.params.id;
+    await client.query('BEGIN');
+    const est = await client.query(
+      `UPDATE estimates SET signed_at = NULL, updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [estimateId]
+    );
+    await client.query(
+      `UPDATE inventory_reservations
+       SET status = 'released', updated_at = NOW()
+       WHERE estimate_id = $1 AND status IN ('reserved','committed')`,
+      [estimateId]
+    );
+    await client.query('COMMIT');
+    res.json({ estimate: est.rows[0] || null });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Unsign estimate error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // List current reservations for one estimate.
 app.get('/api/estimates/:id/reservations', async (req, res) => {
   try {
@@ -1179,11 +1252,23 @@ app.post('/api/estimates/:id/reservations/reconcile', async (req, res) => {
     await client.query('BEGIN');
     const estLookup = await client.query(`SELECT estimate_name FROM estimates WHERE id = $1`, [estimateId]);
     const estimateName = estLookup.rows[0]?.estimate_name || '';
-    // Pull all still-open reservations for this estimate, locking them so a concurrent
-    // reconcile call can't double-deduct.
+    // Require the estimate to be signed before any deduction can happen. This is the
+    // server-side enforcement of the signed-gate invariant; the UI also gates this but
+    // we don't trust the client.
+    const signedCheck = await client.query(
+      `SELECT signed_at FROM estimates WHERE id = $1`,
+      [estimateId]
+    );
+    if (!signedCheck.rows[0]?.signed_at) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Estimate must be marked as signed before reconciling inventory.' });
+    }
+    // Pull committed reservations for this estimate, locking them so a concurrent
+    // reconcile call can't double-deduct. We deliberately exclude 'reserved' rows so
+    // unsigned inventory can never be deducted.
     const resvRes = await client.query(
       `SELECT * FROM inventory_reservations
-       WHERE estimate_id = $1 AND status IN ('reserved','committed')
+       WHERE estimate_id = $1 AND status = 'committed'
        FOR UPDATE`,
       [estimateId]
     );

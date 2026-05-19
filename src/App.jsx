@@ -180,6 +180,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
   
   const [adminSettings, setAdminSettings] = useState(null);
   const [estimateId, setEstimateId] = useState(null);
+  const [signedAt, setSignedAt] = useState(null);
   const [estimateName, setEstimateName] = useState(defaultState.estimateName);
   const [customerInfo, setCustomerInfo] = useState(defaultState.customerInfo);
   const [engagementDate, setEngagementDate] = useState(defaultState.engagementDate);
@@ -428,9 +429,10 @@ export default function SprayFoamEstimator({ onAdmin }) {
           customer_phone: customerInfo?.phone || null,
         }),
       });
-      // Only sync if there are no already-committed credits — once committed, the rows are locked
-      // and we shouldn't blow them away. (Committed state survives via the committedCredits map.)
-      if (Object.keys(committedCredits).length === 0) {
+      // Only sync if the estimate is not signed and has no already-committed credits — once
+      // signed/committed, the rows are locked and we shouldn't blow them away or create new
+      // stranded 'reserved' rows. (Committed state survives via signedAt + committedCredits.)
+      if (!signedAt && Object.keys(committedCredits).length === 0) {
         const creditsPayload = {};
         Object.entries(inventoryCredits).forEach(([fid, gals]) => {
           if (gals && gals > 0) creditsPayload[fid] = gals;
@@ -456,38 +458,42 @@ export default function SprayFoamEstimator({ onAdmin }) {
         return `  • ${name}: ${gals.toFixed(1)} gal`;
       });
     if (lines.length === 0) return;
-    const message = `This will lock in the following reservations for this job:\n${lines.join('\n')}\n\nOnly commit when this job is confirmed and scheduled. Stock will be formally deducted when you reconcile actuals after the job. Continue?`;
+    const message = `Mark this estimate as signed?\n\nThis locks in the following reservations for the job:\n${lines.join('\n')}\n\nThe Actuals section will unlock so you can record what was used and reconcile inventory once the job is complete.`;
     if (!window.confirm(message)) return;
     try {
       const id = ensureEstimateId();
-      // Make sure the latest credits are reserved server-side before flipping to committed.
+      // Make sure the latest credits are reserved server-side, then sign (which also commits them).
       await syncReservationsToServer(id);
-      const res = await fetch(`/api/estimates/${id}/reservations/commit`, { method: 'POST' });
-      if (!res.ok) throw new Error(`commit ${res.status}`);
+      const res = await fetch(`/api/estimates/${id}/sign`, { method: 'POST' });
+      if (!res.ok) throw new Error(`sign ${res.status}`);
+      const data = await res.json();
+      setSignedAt(data.estimate?.signed_at || new Date().toISOString());
       await loadInventorySummary();
       setCommittedCredits({ ...inventoryCredits });
-      setSurplusSuccess('Inventory committed for this job. Reconcile after the job finishes to deduct actuals.');
+      setSurplusSuccess('Estimate signed. Inventory committed; reconcile after the job is complete.');
       setTimeout(() => setSurplusSuccess(''), 5000);
     } catch (err) {
-      console.error('Commit inventory error:', err);
+      console.error('Sign estimate error:', err);
     }
   };
 
   const undoInventoryCommitment = async () => {
-    if (Object.keys(committedCredits).length === 0) return;
+    if (!signedAt && Object.keys(committedCredits).length === 0) return;
     const total = Object.values(committedCredits).reduce((s, g) => s + (parseFloat(g) || 0), 0);
-    if (!window.confirm(`Release all reservations for this estimate (${total.toFixed(1)} gal total) back to available stock?`)) return;
+    if (!window.confirm(`Unsign this estimate and release all reservations (${total.toFixed(1)} gal total) back to available stock? The Actuals section will lock again.`)) return;
     try {
       const id = ensureEstimateId();
-      const res = await fetch(`/api/estimates/${id}/reservations/release`, { method: 'POST' });
-      if (!res.ok) throw new Error(`release ${res.status}`);
+      const res = await fetch(`/api/estimates/${id}/unsign`, { method: 'POST' });
+      if (!res.ok) throw new Error(`unsign ${res.status}`);
+      setSignedAt(null);
+      setActualsConfirmed(false);
       await loadInventorySummary();
       const previouslyCommitted = { ...committedCredits };
       setCommittedCredits({});
-      // Keep the credit amounts in the UI so the user can re-apply or commit them again.
+      // Keep the credit amounts in the UI so the user can re-apply or re-sign them.
       setInventoryCredits(prev => ({ ...prev, ...previouslyCommitted }));
     } catch (err) {
-      console.error('Undo commitment error:', err);
+      console.error('Unsign estimate error:', err);
     }
   };
 
@@ -1301,9 +1307,16 @@ export default function SprayFoamEstimator({ onAdmin }) {
     const loadedId = data.id || null;
     setEstimateId(loadedId);
     setCommittedCredits({});
-    // If this estimate already has server-side reservations, fetch them so the UI lock
-    // (committedCredits + Release button) reflects current state.
+    setSignedAt(null);
+    // If this estimate already has server-side data, fetch its signed status + reservations
+    // so the UI lock (signed badge, committedCredits, Reconcile/Surplus gates) reflects truth.
     if (loadedId) {
+      fetch(`/api/estimates/${loadedId}`)
+        .then(r => r.ok ? r.json() : { estimate: null })
+        .then(({ estimate }) => {
+          if (estimate?.signed_at) setSignedAt(estimate.signed_at);
+        })
+        .catch(err => console.error('Load estimate error:', err));
       fetch(`/api/estimates/${loadedId}/reservations`)
         .then(r => r.ok ? r.json() : { reservations: [] })
         .then(({ reservations = [] }) => {
@@ -2205,31 +2218,58 @@ export default function SprayFoamEstimator({ onAdmin }) {
                         </div>
                       );
                     })}
-                    {totalInventoryCreditGallons > 0 && Object.keys(committedCredits).length === 0 && (
+                    {!signedAt && totalInventoryCreditGallons > 0 && (
                       <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
                         <span className="text-sm text-blue-900">
-                          Ready to commit {totalInventoryCreditGallons.toFixed(1)} gal (~${totalInventoryCreditValue.toFixed(2)}) when this job is confirmed.
+                          Ready to sign: {totalInventoryCreditGallons.toFixed(1)} gal (~${totalInventoryCreditValue.toFixed(2)}) will be committed to this job.
                         </span>
                         <button
                           type="button"
                           onClick={commitInventoryUsage}
                           className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
                         >
-                          Commit Inventory
+                          Mark Estimate as Signed
                         </button>
                       </div>
                     )}
-                    {Object.keys(committedCredits).length > 0 && (
-                      <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
-                        <span className="text-sm text-amber-900">
-                          Inventory committed for this job. Reconcile from the Actuals section after the job is finished to deduct what was actually used.
+                    {!signedAt && totalInventoryCreditGallons === 0 && (
+                      <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <span className="text-sm text-blue-900">
+                          Sign this estimate to unlock the Actuals section (no inventory credits applied).
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!window.confirm('Mark this estimate as signed? The Actuals section will unlock.')) return;
+                            try {
+                              const id = ensureEstimateId();
+                              await syncReservationsToServer(id);
+                              const res = await fetch(`/api/estimates/${id}/sign`, { method: 'POST' });
+                              if (!res.ok) throw new Error(`sign ${res.status}`);
+                              const data = await res.json();
+                              setSignedAt(data.estimate?.signed_at || new Date().toISOString());
+                            } catch (err) { console.error('Sign error:', err); }
+                          }}
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                        >
+                          Mark Estimate as Signed
+                        </button>
+                      </div>
+                    )}
+                    {signedAt && (
+                      <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                        <span className="text-sm text-green-900">
+                          ✓ Signed on {new Date(signedAt).toLocaleDateString()}.
+                          {Object.keys(committedCredits).length > 0 &&
+                            ` ${Object.values(committedCredits).reduce((s, g) => s + (parseFloat(g) || 0), 0).toFixed(1)} gal committed.`}
+                          {' '}Actuals section unlocked.
                         </span>
                         <button
                           type="button"
                           onClick={undoInventoryCommitment}
-                          className="px-3 py-1.5 bg-white border border-amber-400 text-amber-800 rounded hover:bg-amber-100 text-sm font-medium"
+                          className="px-3 py-1.5 bg-white border border-green-400 text-green-800 rounded hover:bg-green-100 text-sm font-medium"
                         >
-                          Release Commitment
+                          Unsign
                         </button>
                       </div>
                     )}
@@ -3249,10 +3289,18 @@ export default function SprayFoamEstimator({ onAdmin }) {
                 <input
                   type="checkbox"
                   checked={actualsConfirmed}
+                  disabled={!signedAt}
                   onChange={(e) => setActualsConfirmed(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                <span className="ml-2 text-sm font-medium text-gray-700">Labor and Material Confirmed</span>
+                <span className={`ml-2 text-sm font-medium ${signedAt ? 'text-gray-700' : 'text-gray-400'}`}>
+                  Labor and Material Confirmed
+                </span>
+                {!signedAt && (
+                  <span className="ml-3 text-xs text-amber-700 italic">
+                    Mark the estimate as signed first to unlock this and the Reconcile / Add to Inventory actions.
+                  </span>
+                )}
               </div>
 
               {actualsConfirmed && (() => {
