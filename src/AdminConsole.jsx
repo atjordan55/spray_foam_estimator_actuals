@@ -514,36 +514,39 @@ export default function AdminConsole({ onBack }) {
 
   const handleAddInventory = async () => {
     setInventoryMessage('');
-    const foamType = (settings.foamTypes || []).find(f => (f.id || f.productName || f.name) === newInventory.material_type_id);
-    if (!foamType || !newInventory.gallons) {
+    const foam = (settings.foamTypes || []).find(f => (f.id || f.productName || f.name) === newInventory.material_type_id);
+    const coating = !foam ? (settings.coatingTypes || []).find(c => (c.id || c.productName || c.name) === newInventory.material_type_id) : null;
+    const material = foam || coating;
+    if (!material || !newInventory.gallons) {
       setInventoryMessage('Select a material and enter gallons.');
       return;
     }
+    const isCoating = !!coating;
     try {
       const res = await fetch('/api/inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          material_type_id: foamType.id || foamType.productName || foamType.name,
-          material_type_name: foamType.productName || foamType.name,
-          material_category: foamType.productCategory || 'foam',
+          material_type_id: material.id || material.productName || material.name,
+          material_type_name: material.productName || material.name,
+          material_category: material.productCategory || (isCoating ? 'coating' : 'foam'),
           gallons: parseFloat(newInventory.gallons),
           inventory_unit: 'gallons',
-          container_type: foamType.containerType || null,
-          container_equivalent: foamType.usableGallonsPerSet ?? 100,
+          container_type: material.containerType || null,
+          container_equivalent: isCoating ? (material.containerGallons ?? 5) : (material.usableGallonsPerSet ?? 100),
           cost_per_gallon: newInventory.source === 'surplus_material' ? 0 : (parseFloat(newInventory.cost_per_gallon) || 0),
           source: newInventory.source,
           is_surplus: newInventory.source === 'surplus_material',
           notes: newInventory.notes || null,
-          a_side_gallons: newInventory.a_side_gallons !== '' ? parseFloat(newInventory.a_side_gallons) : null,
-          b_side_gallons: newInventory.b_side_gallons !== '' ? parseFloat(newInventory.b_side_gallons) : null,
-          ratio_percent: (newInventory.a_side_gallons !== '' && newInventory.b_side_gallons !== '' &&
+          a_side_gallons: !isCoating && newInventory.a_side_gallons !== '' ? parseFloat(newInventory.a_side_gallons) : null,
+          b_side_gallons: !isCoating && newInventory.b_side_gallons !== '' ? parseFloat(newInventory.b_side_gallons) : null,
+          ratio_percent: (!isCoating && newInventory.a_side_gallons !== '' && newInventory.b_side_gallons !== '' &&
                           (parseFloat(newInventory.a_side_gallons) + parseFloat(newInventory.b_side_gallons)) > 0)
             ? (parseFloat(newInventory.a_side_gallons) /
                (parseFloat(newInventory.a_side_gallons) + parseFloat(newInventory.b_side_gallons))) * 200
             : null,
-          batch_id: newInventory.batch_id || null,
-          drum_number: newInventory.drum_number || null,
+          batch_id: !isCoating ? (newInventory.batch_id || null) : null,
+          drum_number: !isCoating ? (newInventory.drum_number || null) : null,
         }),
       });
       if (!res.ok) throw new Error('Failed');
@@ -983,18 +986,31 @@ export default function AdminConsole({ onBack }) {
                     const dotTitle = bothSides
                       ? (item.is_balanced ? 'A and B sides are balanced (within 5%)' : 'A and B sides are imbalanced (>5% difference) — partial drum may be needed before spraying')
                       : '';
+                    const nonSurplus = item.non_surplus_gallons != null ? item.non_surplus_gallons : 0;
+                    const surplus = item.surplus_gallons != null ? item.surplus_gallons : 0;
+                    const total = item.total_gallons != null ? item.total_gallons : (nonSurplus + surplus);
+                    const valueAtCost = nonSurplus * (item.avg_cost_per_gallon || 0);
                     return (
                       <div key={item.material_type_id} className="p-3 border border-gray-200 rounded-lg bg-gray-50">
-                        <div className="font-medium text-gray-900">{item.material_type_name}</div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          {item.available_gallons.toFixed(1)} gal available
+                        <div className="font-medium text-gray-900 flex items-center gap-2">
+                          <span>{item.material_type_name}</span>
+                          {surplus > 0 && (
+                            <span className="px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-800 rounded">SURPLUS</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-700 mt-1">
+                          <span className="font-medium">Total on hand:</span> {total.toFixed(1)} gal
                           {item.container_type ? ` (${item.container_type})` : ''}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          Avg cost: ${item.avg_cost_per_gallon.toFixed(2)}/gal
+                        <div className="text-xs mt-0.5 grid grid-cols-2 gap-x-3">
+                          <span className="text-gray-700"><span className="font-medium">Non-Surplus:</span> {nonSurplus.toFixed(1)} gal</span>
+                          <span className="text-amber-800"><span className="font-medium">Surplus:</span> {surplus.toFixed(1)} gal</span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Avg cost (paid stock): ${item.avg_cost_per_gallon.toFixed(2)}/gal
                         </div>
                         <div className="text-xs text-gray-500">
-                          Est. value: ${(item.available_gallons * item.avg_cost_per_gallon).toFixed(2)}
+                          Value at cost: ${valueAtCost.toFixed(2)} <span className="text-gray-400">(surplus = $0)</span>
                         </div>
                         {hasAB && (
                           <div className="text-xs text-gray-600 mt-1 flex items-center gap-1.5">
@@ -1021,10 +1037,18 @@ export default function AdminConsole({ onBack }) {
                     className={inputClass}
                   >
                     <option value="">Select material…</option>
-                    {(settings.foamTypes || []).filter(f => f.active !== false).map(f => {
-                      const id = f.id || f.productName || f.name;
-                      return <option key={id} value={id}>{f.productName || f.name}</option>;
-                    })}
+                    <optgroup label="Foam">
+                      {(settings.foamTypes || []).filter(f => f.active !== false).map(f => {
+                        const id = f.id || f.productName || f.name;
+                        return <option key={`foam-${id}`} value={id}>{f.productName || f.name}</option>;
+                      })}
+                    </optgroup>
+                    <optgroup label="Coatings">
+                      {(settings.coatingTypes || []).filter(c => c.active !== false).map(c => {
+                        const id = c.id || c.productName || c.name;
+                        return <option key={`coat-${id}`} value={id}>{c.productName || c.name}</option>;
+                      })}
+                    </optgroup>
                   </select>
                 </div>
                 <div>
@@ -1087,42 +1111,58 @@ export default function AdminConsole({ onBack }) {
                     className={inputClass}
                   />
                 </div>
-                <div>
-                  <label className={labelClass}>A-side / ISO Gallons (optional)</label>
-                  <input
-                    type="number" step="0.1"
-                    value={newInventory.a_side_gallons}
-                    onChange={(e) => setNewInventory(p => ({ ...p, a_side_gallons: e.target.value }))}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>B-side / Resin Gallons (optional)</label>
-                  <input
-                    type="number" step="0.1"
-                    value={newInventory.b_side_gallons}
-                    onChange={(e) => setNewInventory(p => ({ ...p, b_side_gallons: e.target.value }))}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Batch ID (optional)</label>
-                  <input
-                    type="text"
-                    value={newInventory.batch_id}
-                    onChange={(e) => setNewInventory(p => ({ ...p, batch_id: e.target.value }))}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Drum Number (optional)</label>
-                  <input
-                    type="text"
-                    value={newInventory.drum_number}
-                    onChange={(e) => setNewInventory(p => ({ ...p, drum_number: e.target.value }))}
-                    className={inputClass}
-                  />
-                </div>
+                {(() => {
+                  const selectedCoating = (settings.coatingTypes || []).find(c => (c.id || c.productName || c.name) === newInventory.material_type_id);
+                  const selectedFoam = (settings.foamTypes || []).find(f => (f.id || f.productName || f.name) === newInventory.material_type_id);
+                  const isCoatingSel = !!selectedCoating && !selectedFoam;
+                  if (isCoatingSel) {
+                    return (
+                      <div className="sm:col-span-2 text-xs text-gray-500 italic">
+                        Coatings are tracked by bucket gallons only — A-side / B-side and drum fields don't apply.
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      <div>
+                        <label className={labelClass}>A-side / ISO Gallons (optional)</label>
+                        <input
+                          type="number" step="0.1"
+                          value={newInventory.a_side_gallons}
+                          onChange={(e) => setNewInventory(p => ({ ...p, a_side_gallons: e.target.value }))}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>B-side / Resin Gallons (optional)</label>
+                        <input
+                          type="number" step="0.1"
+                          value={newInventory.b_side_gallons}
+                          onChange={(e) => setNewInventory(p => ({ ...p, b_side_gallons: e.target.value }))}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Batch ID (optional)</label>
+                        <input
+                          type="text"
+                          value={newInventory.batch_id}
+                          onChange={(e) => setNewInventory(p => ({ ...p, batch_id: e.target.value }))}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Drum Number (optional)</label>
+                        <input
+                          type="text"
+                          value={newInventory.drum_number}
+                          onChange={(e) => setNewInventory(p => ({ ...p, drum_number: e.target.value }))}
+                          className={inputClass}
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
               <div className="mt-3 flex items-center gap-3">
                 <button

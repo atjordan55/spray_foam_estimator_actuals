@@ -407,7 +407,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
           body: JSON.stringify({
             material_type_id: fid,
             material_type_name: name,
-            material_category: 'foam',
+            material_category: summaryEntry?.material_category || 'foam',
             gallons: -Math.abs(gals),
             inventory_unit: 'gallons',
             source: 'inventory_commitment',
@@ -439,7 +439,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
         body: JSON.stringify({
           material_type_id: foamTypeId,
           material_type_name: name,
-          material_category: 'foam',
+          material_category: summaryEntry?.material_category || 'foam',
           gallons: Math.abs(gals),
           inventory_unit: 'gallons',
           source: 'commitment_reversal',
@@ -1926,15 +1926,19 @@ export default function SprayFoamEstimator({ onAdmin }) {
                 {showInventoryPanel && (
                   <div className="mt-4 space-y-3">
                     {inventoryLoading && <p className="text-sm text-gray-500">Loading inventory…</p>}
-                    {!inventoryLoading && inventorySummary.length === 0 && (
-                      <p className="text-sm text-gray-500 italic">No inventory available. Add stock from the Admin Console → Inventory tab, or after job completion via the surplus panel below.</p>
-                    )}
-                    {!inventoryLoading && inventorySummary.length > 0 && (
+                    {(() => {
+                      const foamItems = inventorySummary.filter(s => (s.material_category || 'foam') === 'foam');
+                      if (!inventoryLoading && foamItems.length === 0) {
+                        return <p className="text-sm text-gray-500 italic">No foam inventory available. Add stock from the Admin Console → Inventory tab, or after job completion via the surplus panel below.</p>;
+                      }
+                      return null;
+                    })()}
+                    {!inventoryLoading && inventorySummary.filter(s => (s.material_category || 'foam') === 'foam').length > 0 && (
                       <p className="text-xs text-gray-600 italic">
-                        Inventory credits draw from <span className="font-semibold text-amber-700">Surplus only</span> ($0 cost basis, already paid for by a prior job). Non-surplus paid stock is never credited at $0.
+                        Inventory credits draw from <span className="font-semibold text-amber-700">Surplus only</span> ($0 cost basis, already paid for by a prior job). Non-surplus paid stock is never credited at $0. Coating inventory is tracked separately and not creditable here.
                       </p>
                     )}
-                    {inventorySummary.map(item => {
+                    {inventorySummary.filter(s => (s.material_category || 'foam') === 'foam').map(item => {
                       const fid = item.material_type_id;
                       const credit = inventoryCredits[fid] || 0;
                       const inputVal = inventoryCreditsFocused[fid] ? (inventoryCreditsInputs[fid] ?? '') : (credit > 0 ? credit : '');
