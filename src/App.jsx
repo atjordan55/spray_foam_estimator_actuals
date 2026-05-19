@@ -167,6 +167,7 @@ const getDefaultState = () => ({
     actualClosedGallons: null,
     actualISOGallons: null,
     actualResinGallons: null,
+    actualABByFoamType: {},
     actualCoatingGallonsByType: {},
     actualFuelCost: null,
     actualWasteDisposal: null,
@@ -350,11 +351,26 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const submitSurplusToInventory = async (surplusItems) => {
     setSurplusSubmitting(true);
     try {
-      const iso = actuals.actualISOGallons;
-      const resin = actuals.actualResinGallons;
-      const hasABData = iso != null && resin != null && (iso + resin) > 0;
-      const ratio = hasABData ? (iso / (iso + resin)) * 200 : null;
+      const abByType = actuals.actualABByFoamType || {};
+      // Determine whether the estimate truly uses only one foam type (so legacy global A/B can be safely attributed).
+      const estimateFoamTypeIds = new Set();
+      sprayAreas.forEach(a => a.foamApplications.forEach(app => {
+        if (app.applicationType !== 'Coating' && app.foamTypeId) estimateFoamTypeIds.add(app.foamTypeId);
+      }));
+      const estimateHasSingleFoamType = estimateFoamTypeIds.size === 1;
       for (const item of surplusItems) {
+        // Prefer per-foam-type A/B; fall back to legacy single-value fields only if the estimate has just one foam type.
+        let iso = null, resin = null;
+        const perType = abByType[item.foamTypeId];
+        if (perType && (perType.iso != null || perType.resin != null)) {
+          iso = perType.iso != null ? parseFloat(perType.iso) : null;
+          resin = perType.resin != null ? parseFloat(perType.resin) : null;
+        } else if (estimateHasSingleFoamType && estimateFoamTypeIds.has(item.foamTypeId)) {
+          iso = actuals.actualISOGallons;
+          resin = actuals.actualResinGallons;
+        }
+        const hasABData = iso != null && resin != null && (iso + resin) > 0;
+        const ratio = hasABData ? (iso / (iso + resin)) * 200 : null;
         await fetch('/api/inventory', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -642,7 +658,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
     return { gallonsNeeded, containersNeeded, sqFtPerGallon, sqFtPerContainer, wetMilWarning };
   };
 
-  const calculateCoatingApplicationCost = (coatingApp, areaSqFt = 0) => {
+  const calculateCoatingApplicationCost = (coatingApp, areaSqFt = 0, ignoreCredits = false) => {
     const sqFt = parseFloat(areaSqFt) || 0;
     const materialCostPct = coatingApp.materialCostPct ?? 20;
     const costPerContainer = parseFloat(coatingApp.materialCostPerContainer) || 0;
@@ -653,11 +669,28 @@ export default function SprayFoamEstimator({ onAdmin }) {
     const containers = (calcMethod === 'manualOverride')
       ? (coatingApp.numContainers || 0)
       : coverage.containersNeeded;
-    const baseMaterialCost = Math.round(pricePerContainer * containers * 100) / 100;
+    const containerGallons = parseFloat(coatingApp.containerGallons) || 0;
+    const usableGals = parseFloat(coatingApp.usableGallonsPerSet) || 0;
+    const gallonsPerContainer = usableGals > 0 ? usableGals : containerGallons;
+    const totalGallons = (calcMethod === 'manualOverride')
+      ? containers * gallonsPerContainer
+      : (coverage.gallonsNeeded || 0);
+    const fullBaseCost = pricePerContainer * containers;
+
+    const coatingTypeId = coatingApp.coatingTypeId;
+    const credit = (!ignoreCredits && coatingTypeId) ? (inventoryCredits[coatingTypeId] || 0) : 0;
+    const creditedGallons = Math.min(totalGallons, credit);
+    let baseMaterialCost;
+    if (creditedGallons > 0 && totalGallons > 0) {
+      const paidFraction = (totalGallons - creditedGallons) / totalGallons;
+      baseMaterialCost = Math.round(fullBaseCost * paidFraction * 100) / 100;
+    } else {
+      baseMaterialCost = Math.round(fullBaseCost * 100) / 100;
+    }
     const markupPct = parseFloat(coatingApp.materialMarkup) || 0;
     const markupAmount = Math.round(baseMaterialCost * (markupPct / 100) * 100) / 100;
     const totalCost = Math.round((baseMaterialCost + markupAmount) * 100) / 100;
-    return { containers, baseMaterialCost, markupAmount, totalCost, costPerContainer, pricePerContainer, coverage };
+    return { containers, baseMaterialCost, markupAmount, totalCost, costPerContainer, pricePerContainer, coverage, creditedGallons, totalGallons };
   };
 
   // Build per-coating-type breakdown across given areas. Returns Map<typeName, info>.
@@ -1187,13 +1220,36 @@ export default function SprayFoamEstimator({ onAdmin }) {
     setCompletionDate(data.completionDate || "");
     setProjectNotes(data.projectNotes || "");
     setGlobalInputs(data.globalInputs || getDefaultState().globalInputs);
-    setSprayAreas(migrateSprayAreas(data.sprayAreas));
+    const migratedAreas = migrateSprayAreas(data.sprayAreas);
+    setSprayAreas(migratedAreas);
+    // Back-compat: if no per-foam-type A/B exists but legacy global ISO/Resin do, and the estimate
+    // uses exactly one foam type, seed the per-type map so the UI shows the values seamlessly.
+    let hydratedABByFoamType = data.actuals?.actualABByFoamType ?? {};
+    if (
+      (!hydratedABByFoamType || Object.keys(hydratedABByFoamType).length === 0) &&
+      (data.actuals?.actualISOGallons != null || data.actuals?.actualResinGallons != null)
+    ) {
+      const ids = new Set();
+      (migratedAreas || []).forEach(a => (a.foamApplications || []).forEach(app => {
+        if (app.applicationType !== 'Coating' && app.foamTypeId) ids.add(app.foamTypeId);
+      }));
+      if (ids.size === 1) {
+        const onlyId = Array.from(ids)[0];
+        hydratedABByFoamType = {
+          [onlyId]: {
+            iso: data.actuals?.actualISOGallons ?? null,
+            resin: data.actuals?.actualResinGallons ?? null,
+          },
+        };
+      }
+    }
     setActuals({
       actualLaborHours: data.actuals?.actualLaborHours ?? null,
       actualOpenGallons: data.actuals?.actualOpenGallons ?? null,
       actualClosedGallons: data.actuals?.actualClosedGallons ?? null,
       actualISOGallons: data.actuals?.actualISOGallons ?? null,
       actualResinGallons: data.actuals?.actualResinGallons ?? null,
+      actualABByFoamType: hydratedABByFoamType,
       actualCoatingGallonsByType: data.actuals?.actualCoatingGallonsByType
         ?? (data.actuals?.actualCoatingGallons != null ? { Coating: data.actuals.actualCoatingGallons } : {}),
       actualFuelCost: data.actuals?.actualFuelCost ?? null,
@@ -1434,7 +1490,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
     const areaSqFtForTotals = calculateEffectiveSqFt(area);
     area.foamApplications.forEach(app => {
       if (app.applicationType === "Coating") {
-        const cc = calculateCoatingApplicationCost(app, areaSqFtForTotals);
+        const cc = calculateCoatingApplicationCost(app, areaSqFtForTotals, true);
         replacementMaterialCost += cc.baseMaterialCost;
         replacementMaterialMarkupAmount += cc.markupAmount;
       } else {
@@ -1927,18 +1983,40 @@ export default function SprayFoamEstimator({ onAdmin }) {
                   <div className="mt-4 space-y-3">
                     {inventoryLoading && <p className="text-sm text-gray-500">Loading inventory…</p>}
                     {(() => {
-                      const foamItems = inventorySummary.filter(s => (s.material_category || 'foam') === 'foam');
-                      if (!inventoryLoading && foamItems.length === 0) {
-                        return <p className="text-sm text-gray-500 italic">No foam inventory available. Add stock from the Admin Console → Inventory tab, or after job completion via the surplus panel below.</p>;
+                      const usedIds = new Set();
+                      sprayAreas.forEach(a => a.foamApplications.forEach(app => {
+                        if (app.applicationType === 'Coating') {
+                          if (app.coatingTypeId) usedIds.add(app.coatingTypeId);
+                        } else {
+                          if (app.foamTypeId) usedIds.add(app.foamTypeId);
+                        }
+                      }));
+                      const usedItems = inventorySummary.filter(s => usedIds.has(s.material_type_id));
+                      if (!inventoryLoading && usedItems.length === 0) {
+                        return <p className="text-sm text-gray-500 italic">No tracked inventory for the foams or coatings used in this estimate. Surplus from prior jobs of the same product will appear here when available.</p>;
                       }
                       return null;
                     })()}
-                    {!inventoryLoading && inventorySummary.filter(s => (s.material_category || 'foam') === 'foam').length > 0 && (
+                    {!inventoryLoading && (() => {
+                      const usedIds = new Set();
+                      sprayAreas.forEach(a => a.foamApplications.forEach(app => {
+                        if (app.applicationType === 'Coating') { if (app.coatingTypeId) usedIds.add(app.coatingTypeId); }
+                        else { if (app.foamTypeId) usedIds.add(app.foamTypeId); }
+                      }));
+                      return inventorySummary.filter(s => usedIds.has(s.material_type_id)).length > 0;
+                    })() && (
                       <p className="text-xs text-gray-600 italic">
-                        Inventory credits draw from <span className="font-semibold text-amber-700">Surplus only</span> ($0 cost basis, already paid for by a prior job). Non-surplus paid stock is never credited at $0. Coating inventory is tracked separately and not creditable here.
+                        Only the materials used in this estimate's areas are shown. Credits draw from <span className="font-semibold text-amber-700">Surplus only</span> ($0 cost basis, already paid for by a prior job). Non-surplus paid stock is never credited at $0.
                       </p>
                     )}
-                    {inventorySummary.filter(s => (s.material_category || 'foam') === 'foam').map(item => {
+                    {(() => {
+                      const usedIds = new Set();
+                      sprayAreas.forEach(a => a.foamApplications.forEach(app => {
+                        if (app.applicationType === 'Coating') { if (app.coatingTypeId) usedIds.add(app.coatingTypeId); }
+                        else { if (app.foamTypeId) usedIds.add(app.foamTypeId); }
+                      }));
+                      return inventorySummary.filter(s => usedIds.has(s.material_type_id));
+                    })().map(item => {
                       const fid = item.material_type_id;
                       const credit = inventoryCredits[fid] || 0;
                       const inputVal = inventoryCreditsFocused[fid] ? (inventoryCreditsInputs[fid] ?? '') : (credit > 0 ? credit : '');
@@ -2766,81 +2844,123 @@ export default function SprayFoamEstimator({ onAdmin }) {
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Actual ISO Gallons (A-side)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={actualsFocused.isoGallons
-                      ? (actualsInputs.isoGallons ?? "")
-                      : (actuals.actualISOGallons !== null
-                          ? (actuals.actualISOGallons === 0 ? "" : actuals.actualISOGallons.toFixed(1))
-                          : "")}
-                    onChange={(e) => setActualsInputs(prev => ({ ...prev, isoGallons: e.target.value }))}
-                    onFocus={() => {
-                      setActualsFocused(prev => ({ ...prev, isoGallons: true }));
-                      const currentVal = actuals.actualISOGallons;
-                      setActualsInputs(prev => ({ ...prev, isoGallons: currentVal != null && currentVal > 0 ? currentVal.toFixed(1) : "" }));
-                    }}
-                    onBlur={() => {
-                      setActualsFocused(prev => ({ ...prev, isoGallons: false }));
-                      if (actualsInputs.isoGallons !== undefined && actualsInputs.isoGallons !== "") {
-                        handleActualsChange("actualISOGallons", actualsInputs.isoGallons);
-                      }
-                      setActualsInputs(prev => {
-                        const updated = { ...prev };
-                        delete updated.isoGallons;
-                        return updated;
-                      });
-                    }}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Actual Resin Gallons (B-side)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={actualsFocused.resinGallons
-                      ? (actualsInputs.resinGallons ?? "")
-                      : (actuals.actualResinGallons !== null
-                          ? (actuals.actualResinGallons === 0 ? "" : actuals.actualResinGallons.toFixed(1))
-                          : "")}
-                    onChange={(e) => setActualsInputs(prev => ({ ...prev, resinGallons: e.target.value }))}
-                    onFocus={() => {
-                      setActualsFocused(prev => ({ ...prev, resinGallons: true }));
-                      const currentVal = actuals.actualResinGallons;
-                      setActualsInputs(prev => ({ ...prev, resinGallons: currentVal != null && currentVal > 0 ? currentVal.toFixed(1) : "" }));
-                    }}
-                    onBlur={() => {
-                      setActualsFocused(prev => ({ ...prev, resinGallons: false }));
-                      if (actualsInputs.resinGallons !== undefined && actualsInputs.resinGallons !== "") {
-                        handleActualsChange("actualResinGallons", actualsInputs.resinGallons);
-                      }
-                      setActualsInputs(prev => {
-                        const updated = { ...prev };
-                        delete updated.resinGallons;
-                        return updated;
-                      });
-                    }}
-                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
               </div>
-              {actuals.actualISOGallons != null && actuals.actualResinGallons != null && actuals.actualISOGallons > 0 && actuals.actualResinGallons > 0 && (() => {
-                const ratio = (actuals.actualISOGallons / (actuals.actualISOGallons + actuals.actualResinGallons)) * 200;
-                let badgeColor = 'bg-red-100 text-red-800';
-                if (ratio >= 98 && ratio <= 102) badgeColor = 'bg-green-100 text-green-800';
-                else if ((ratio >= 95 && ratio < 98) || (ratio > 102 && ratio <= 105)) badgeColor = 'bg-yellow-100 text-yellow-800';
+              {(() => {
+                const seen = new Set();
+                const usedFoamTypes = [];
+                sprayAreas.forEach(area => area.foamApplications.forEach(app => {
+                  if (app.applicationType === 'Coating') return;
+                  const id = app.foamTypeId || (app.foamTypeCategory === 'Closed' ? 'closed-cell' : 'open-cell');
+                  if (seen.has(id)) return;
+                  seen.add(id);
+                  usedFoamTypes.push({
+                    id,
+                    name: app.foamTypeName || `${app.foamTypeCategory || app.foamType || ''} Cell`.trim(),
+                    category: app.foamTypeCategory || app.foamType || '',
+                  });
+                }));
+                if (usedFoamTypes.length === 0) return null;
                 return (
-                  <div className="mt-3 flex items-center">
-                    <span className="text-sm font-medium text-gray-700 mr-2">Spray Ratio:</span>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${badgeColor}`}>
-                      {ratio.toFixed(1)}%
-                    </span>
-                    <Tooltip text="Spray foam requires equal volumes of ISO (A-side) and Resin (B-side). 100% indicates a perfect 1:1 ratio. Deviations may indicate off-ratio spray, flushing losses, or equipment issues that affect foam quality and yield." />
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <h4 className="text-sm font-semibold text-gray-800 mb-1">Actual A-side / B-side Gallons by Foam Type</h4>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Track ISO and Resin gallons per foam product. Open-cell and closed-cell use different chemistries — their A and B sides are not interchangeable.
+                    </p>
+                    <div className="space-y-3">
+                      {usedFoamTypes.map(ft => {
+                        const cur = (actuals.actualABByFoamType || {})[ft.id] || {};
+                        const iso = cur.iso;
+                        const resin = cur.resin;
+                        const isoKey = `iso_${ft.id}`;
+                        const resinKey = `resin_${ft.id}`;
+                        const isoFocused = !!actualsFocused[isoKey];
+                        const resinFocused = !!actualsFocused[resinKey];
+                        const updatePerType = (field, raw) => {
+                          const num = raw === '' || raw == null ? null : parseFloat(raw);
+                          setActuals(prev => {
+                            const next = { ...prev, actualABByFoamType: { ...(prev.actualABByFoamType || {}) } };
+                            next.actualABByFoamType[ft.id] = { ...(next.actualABByFoamType[ft.id] || {}), [field]: (isNaN(num) ? null : num) };
+                            // Keep legacy totals in sync for back-compat readers.
+                            let totalIso = 0, totalResin = 0, anyIso = false, anyResin = false;
+                            Object.values(next.actualABByFoamType).forEach(v => {
+                              if (v && v.iso != null) { totalIso += parseFloat(v.iso) || 0; anyIso = true; }
+                              if (v && v.resin != null) { totalResin += parseFloat(v.resin) || 0; anyResin = true; }
+                            });
+                            next.actualISOGallons = anyIso ? totalIso : null;
+                            next.actualResinGallons = anyResin ? totalResin : null;
+                            return next;
+                          });
+                        };
+                        const both = iso != null && resin != null && iso > 0 && resin > 0;
+                        const ratio = both ? (iso / (iso + resin)) * 200 : null;
+                        let badgeColor = 'bg-red-100 text-red-800';
+                        if (ratio != null) {
+                          if (ratio >= 98 && ratio <= 102) badgeColor = 'bg-green-100 text-green-800';
+                          else if ((ratio >= 95 && ratio < 98) || (ratio > 102 && ratio <= 105)) badgeColor = 'bg-yellow-100 text-yellow-800';
+                        }
+                        return (
+                          <div key={ft.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="text-sm font-medium text-gray-900 mb-2 flex items-center gap-2">
+                              {ft.name}
+                              {ft.category && (
+                                <span className="text-xs font-normal text-gray-500">({ft.category}-cell)</span>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Actual ISO (A-side) Gallons</label>
+                                <input
+                                  type="number" step="0.1" min="0"
+                                  value={isoFocused
+                                    ? (actualsInputs[isoKey] ?? '')
+                                    : (iso != null ? (iso === 0 ? '' : iso.toFixed(1)) : '')}
+                                  onChange={(e) => setActualsInputs(prev => ({ ...prev, [isoKey]: e.target.value }))}
+                                  onFocus={() => {
+                                    setActualsFocused(prev => ({ ...prev, [isoKey]: true }));
+                                    setActualsInputs(prev => ({ ...prev, [isoKey]: iso != null && iso > 0 ? iso.toFixed(1) : '' }));
+                                  }}
+                                  onBlur={() => {
+                                    setActualsFocused(prev => ({ ...prev, [isoKey]: false }));
+                                    if (actualsInputs[isoKey] !== undefined) updatePerType('iso', actualsInputs[isoKey]);
+                                    setActualsInputs(prev => { const u = { ...prev }; delete u[isoKey]; return u; });
+                                  }}
+                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Actual Resin (B-side) Gallons</label>
+                                <input
+                                  type="number" step="0.1" min="0"
+                                  value={resinFocused
+                                    ? (actualsInputs[resinKey] ?? '')
+                                    : (resin != null ? (resin === 0 ? '' : resin.toFixed(1)) : '')}
+                                  onChange={(e) => setActualsInputs(prev => ({ ...prev, [resinKey]: e.target.value }))}
+                                  onFocus={() => {
+                                    setActualsFocused(prev => ({ ...prev, [resinKey]: true }));
+                                    setActualsInputs(prev => ({ ...prev, [resinKey]: resin != null && resin > 0 ? resin.toFixed(1) : '' }));
+                                  }}
+                                  onBlur={() => {
+                                    setActualsFocused(prev => ({ ...prev, [resinKey]: false }));
+                                    if (actualsInputs[resinKey] !== undefined) updatePerType('resin', actualsInputs[resinKey]);
+                                    setActualsInputs(prev => { const u = { ...prev }; delete u[resinKey]; return u; });
+                                  }}
+                                  className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </div>
+                            </div>
+                            {ratio != null && (
+                              <div className="mt-2 flex items-center">
+                                <span className="text-xs font-medium text-gray-700 mr-2">Spray Ratio:</span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badgeColor}`}>
+                                  {ratio.toFixed(1)}%
+                                </span>
+                                <Tooltip text="Spray foam requires equal volumes of ISO (A-side) and Resin (B-side). 100% indicates a perfect 1:1 ratio. Deviations may indicate off-ratio spray, flushing losses, or equipment issues that affect foam quality and yield." />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })()}
