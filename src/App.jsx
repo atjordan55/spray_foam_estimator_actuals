@@ -2824,18 +2824,30 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                       $/Sq Ft
                                       <Tooltip text="Price charged per square foot. Editing this will adjust Material Markup (%)." />
                                     </label>
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
-                                      value={pricePerSqFtInputs[foamKey] !== undefined ? pricePerSqFtInputs[foamKey] : (foamCalcs.pricePerSqFt ? foamCalcs.pricePerSqFt.toFixed(2) : "")}
-                                      onChange={(e) => handlePricePerSqFtInputChange(foamKey, e.target.value)}
-                                      onBlur={() => handlePricePerSqFtBlur(areaIndex, foamIndex, foamApp)}
-                                      className={`w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${pricePerSqFtErrors[foamKey] ? 'border-red-500' : 'border-gray-300'}`}
-                                    />
-                                    {pricePerSqFtErrors[foamKey] && (
-                                      <p className="text-red-600 text-xs mt-1">{pricePerSqFtErrors[foamKey]}</p>
-                                    )}
+                                    {(() => {
+                                      const creditApplied = foamApp.foamTypeId && (parseFloat(inventoryCredits[foamApp.foamTypeId]) || 0) > 0;
+                                      return (
+                                        <>
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={pricePerSqFtInputs[foamKey] !== undefined ? pricePerSqFtInputs[foamKey] : (foamCalcs.pricePerSqFt ? foamCalcs.pricePerSqFt.toFixed(2) : "")}
+                                            onChange={(e) => handlePricePerSqFtInputChange(foamKey, e.target.value)}
+                                            onBlur={() => handlePricePerSqFtBlur(areaIndex, foamIndex, foamApp)}
+                                            readOnly={creditApplied}
+                                            title={creditApplied ? "Clear the surplus credit for this foam to edit price." : ""}
+                                            className={`w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${pricePerSqFtErrors[foamKey] ? 'border-red-500' : creditApplied ? 'border-gray-200 bg-gray-100 text-gray-700 cursor-not-allowed' : 'border-gray-300'}`}
+                                          />
+                                          {pricePerSqFtErrors[foamKey] && (
+                                            <p className="text-red-600 text-xs mt-1">{pricePerSqFtErrors[foamKey]}</p>
+                                          )}
+                                          {creditApplied && !pricePerSqFtErrors[foamKey] && (
+                                            <p className="text-xs text-amber-700 mt-1">Credited price shown (surplus applied). Clear credit to edit.</p>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
                                   </div>
                                 </div>
                                 
