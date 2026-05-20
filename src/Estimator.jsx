@@ -1448,7 +1448,9 @@ export default function SprayFoamEstimator({ onAdmin }) {
           .replace(/\{\{\s*rvalue\s*\}\}/gi, rValueFormatted)
           .replace(/\{\{\s*sqft\s*\}\}/gi, areaSqFt != null ? String(Math.round(areaSqFt)) : '')
           .replace(/\{\{\s*area\s*\}\}/gi, area.name || '')
-          .replace(/\{\{\s*foamType\s*\}\}/gi, foamApp.foamTypeName || category || '');
+          .replace(/\{\{\s*foamType\s*\}\}/gi, foamApp.foamTypeName || category || '')
+          .replace(/\{\{\s*coatingType\s*\}\}/gi, foamApp.coatingTypeName || '')
+          .replace(/\{\{\s*areaType\s*\}\}/gi, area.areaType || '');
 
         // Check admin-configured Jobber descriptions first
         const descKey = `${area.areaType}-${category}`;

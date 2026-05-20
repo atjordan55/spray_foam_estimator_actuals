@@ -1321,27 +1321,29 @@ export default function AdminConsole({ onBack }) {
 
         {/* Jobber Descriptions */}
         {activeSection === 'jobberDesc' && (() => {
-          const SAMPLE = { thickness: '2', rvalue: '14.4', sqft: '1850', area: 'Main Floor' };
-          const applyTokens = (template, foamTypeLabel) => {
+          const SAMPLE = { thickness: '2', rvalue: '14.4', sqft: '1850', area: 'Main Floor', coatingType: 'Polyurea Top Coat' };
+          const applyTokens = (template, ctx = {}) => {
             if (!template) return '';
             let out = template
               .replace(/\{\{\s*thickness\s*\}\}/gi, SAMPLE.thickness)
               .replace(/\{\{\s*rvalue\s*\}\}/gi, SAMPLE.rvalue)
               .replace(/\{\{\s*sqft\s*\}\}/gi, SAMPLE.sqft)
               .replace(/\{\{\s*area\s*\}\}/gi, SAMPLE.area)
-              .replace(/\{\{\s*foamType\s*\}\}/gi, foamTypeLabel || '');
+              .replace(/\{\{\s*foamType\s*\}\}/gi, ctx.foamTypeLabel || '')
+              .replace(/\{\{\s*coatingType\s*\}\}/gi, ctx.coatingTypeLabel || SAMPLE.coatingType)
+              .replace(/\{\{\s*areaType\s*\}\}/gi, ctx.areaTypeLabel || '');
             if (!/\{\{\s*rvalue\s*\}\}/i.test(template)) {
               out += `\n[Resulting in an effective R-Value of ${SAMPLE.rvalue}]`;
             }
             return out;
           };
-          const Preview = ({ template, foamTypeLabel }) => {
+          const Preview = ({ template, foamTypeLabel, coatingTypeLabel, areaTypeLabel }) => {
             const trimmed = (template || '').trim();
             if (!trimmed) return null;
             return (
               <div className="mt-1.5 text-xs">
                 <div className="text-gray-500 mb-0.5">Live preview (sample: 2" thick, R-14.4, 1,850 sq ft, "Main Floor"):</div>
-                <pre className="whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded p-2 text-gray-800 font-sans">{applyTokens(trimmed, foamTypeLabel)}</pre>
+                <pre className="whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded p-2 text-gray-800 font-sans">{applyTokens(trimmed, { foamTypeLabel, coatingTypeLabel, areaTypeLabel })}</pre>
               </div>
             );
           };
@@ -1364,6 +1366,8 @@ export default function AdminConsole({ onBack }) {
                   <li><code className="bg-white px-1 rounded">{'{{sqft}}'}</code> — effective square footage for this area</li>
                   <li><code className="bg-white px-1 rounded">{'{{area}}'}</code> — area name (e.g. <code>Main Floor</code>)</li>
                   <li><code className="bg-white px-1 rounded">{'{{foamType}}'}</code> — foam product name (e.g. <code>Closed Cell 2.0</code>)</li>
+                  <li><code className="bg-white px-1 rounded">{'{{coatingType}}'}</code> — coating product name (e.g. <code>Polyurea Top Coat</code>)</li>
+                  <li><code className="bg-white px-1 rounded">{'{{areaType}}'}</code> — area type (e.g. <code>Exterior Walls</code>, <code>Roof Deck</code>)</li>
                 </ul>
                 <p className="mt-2">Example: <code className="bg-white px-1 rounded">…applied at an average depth of {'{{thickness}}'} inches…</code> becomes <code className="bg-white px-1 rounded">…applied at an average depth of 2 inches…</code></p>
               </div>
@@ -1377,7 +1381,7 @@ export default function AdminConsole({ onBack }) {
                         <div key={key}>
                           <label className={labelClass}>{cat} Cell</label>
                           <textarea rows={2} value={settings.jobberDescriptions[key] || ''} onChange={(e) => updateJobberDesc(key, e.target.value)} className={inputClass} />
-                          <Preview template={settings.jobberDescriptions[key]} foamTypeLabel={`${cat} Cell`} />
+                          <Preview template={settings.jobberDescriptions[key]} foamTypeLabel={`${cat} Cell`} areaTypeLabel={areaType} />
                         </div>
                       );
                     })}
