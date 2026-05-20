@@ -1480,27 +1480,69 @@ export default function SprayFoamEstimator({ onAdmin }) {
         return '';
       };
       
+      // Token substitution helper for material line items (foam + coating).
+      const buildMaterialTokens = (area, foamApp, opts = {}) => {
+        const { thickness = '', rValueFormatted = '', sqft = '' } = opts;
+        return (template) => template
+          .replace(/\{\{\s*thickness\s*\}\}/gi, String(thickness ?? ''))
+          .replace(/\{\{\s*rvalue\s*\}\}/gi, rValueFormatted)
+          .replace(/\{\{\s*sqft\s*\}\}/gi, sqft != null ? String(sqft) : '')
+          .replace(/\{\{\s*area\s*\}\}/gi, area.name || '')
+          .replace(/\{\{\s*foamType\s*\}\}/gi, foamApp.foamTypeName || '')
+          .replace(/\{\{\s*coatingType\s*\}\}/gi, foamApp.coatingTypeName || '')
+          .replace(/\{\{\s*areaType\s*\}\}/gi, area.areaType || '');
+      };
+
       sprayAreas.forEach(area => {
         const areaSqFtForCalcs = calculateEffectiveSqFt(area);
         area.foamApplications.forEach(foamApp => {
           if (foamApp.applicationType === "Coating") {
             const calcs = calculateCoatingApplicationCost(foamApp, areaSqFtForCalcs);
+            const sqft = Math.round(areaSqFtForCalcs);
+            const pricePerSqFt = parseFloat(foamApp.defaultPricePerSqFt) || 0;
+            const coatingId = foamApp.coatingTypeId;
+            const nameKey = coatingId ? `material:coating:${coatingId}:name` : null;
+            const descKey = coatingId ? `material:coating:${coatingId}:desc` : null;
+            const adminName = nameKey ? adminSettings?.jobberDescriptions?.[nameKey] : null;
+            const adminDesc = descKey ? adminSettings?.jobberDescriptions?.[descKey] : null;
+            const applyT = buildMaterialTokens(area, foamApp, { sqft });
+            const name = (adminName && adminName.trim())
+              ? applyT(adminName).trim() || `${area.name} - ${foamApp.coatingTypeName || 'Coating'}`
+              : `${area.name} - ${foamApp.coatingTypeName || 'Coating'}`;
+            const description = (adminDesc && adminDesc.trim())
+              ? applyT(adminDesc)
+              : `${calcs.containers.toFixed(2)} containers`;
             lineItems.push({
-              name: `${area.name} - ${foamApp.coatingTypeName || 'Coating'}`,
-              description: `${calcs.containers.toFixed(2)} containers`,
-              quantity: Math.round(calcs.containers * 100) / 100,
-              unitPrice: calcs.pricePerContainer || 0,
+              name,
+              description,
+              quantity: sqft,
+              unitPrice: pricePerSqFt,
             });
             return;
           }
           const calcs = calculateFoamApplicationCost(area, foamApp);
           const sqft = Math.round(calcs.sqft);
-          const description = getLineItemDescription(area, foamApp, calcs.rValue, areaSqFtForCalcs);
           const category = foamApp.foamTypeCategory || foamApp.foamType;
           const displayName = foamApp.foamTypeName || `${category} Cell`;
-          
+          const foamId = foamApp.foamTypeId;
+          const nameKey = foamId ? `material:foam:${foamId}:name` : null;
+          const descKey = foamId ? `material:foam:${foamId}:desc` : null;
+          const adminName = nameKey ? adminSettings?.jobberDescriptions?.[nameKey] : null;
+          const adminDesc = descKey ? adminSettings?.jobberDescriptions?.[descKey] : null;
+          const applyT = buildMaterialTokens(area, foamApp, {
+            thickness: foamApp.foamThickness,
+            rValueFormatted: calcs.rValue.toFixed(1),
+            sqft,
+          });
+          const name = (adminName && adminName.trim())
+            ? applyT(adminName).trim() || `${area.name} (${displayName} ${foamApp.foamThickness}in)`
+            : `${area.name} (${displayName} ${foamApp.foamThickness}in)`;
+          const description = (adminDesc && adminDesc.trim())
+            ? applyT(adminDesc)
+            : getLineItemDescription(area, foamApp, calcs.rValue, areaSqFtForCalcs);
+
           lineItems.push({
-            name: `${area.name} (${displayName} ${foamApp.foamThickness}in)`,
+            name,
             description,
             quantity: sqft,
             unitPrice: calcs.pricePerSqFt,
