@@ -4,60 +4,6 @@ function getDb() {
   return neon(process.env.DATABASE_URL);
 }
 
-function migrateLegacyJobberDescriptions(settings) {
-  const legacy = settings.jobberDescriptions;
-  if (!legacy || typeof legacy !== 'object' || Object.keys(legacy).length === 0) {
-    return { settings, changed: false };
-  }
-
-  const next = { ...settings };
-  const jli = {
-    labor: { name: '', description: '' },
-    foamTypes: {},
-    coatingTypes: {},
-    ...(next.jobberLineItems || {}),
-  };
-  jli.labor = { name: '', description: '', ...(jli.labor || {}) };
-  jli.foamTypes = { ...(jli.foamTypes || {}) };
-  jli.coatingTypes = { ...(jli.coatingTypes || {}) };
-
-  if (legacy.labor && !((jli.labor.description || '').trim())) {
-    jli.labor = { ...jli.labor, description: legacy.labor };
-  }
-
-  const pickLegacyForCategory = (cat) => {
-    const suffix = `-${cat}`;
-    let best = '';
-    for (const [k, v] of Object.entries(legacy)) {
-      if (k === 'labor') continue;
-      if (!k.endsWith(suffix)) continue;
-      const text = (v || '').toString().trim();
-      if (!text) continue;
-      if (!best || text.length > best.length) best = text;
-    }
-    return best;
-  };
-
-  const openText = pickLegacyForCategory('Open');
-  const closedText = pickLegacyForCategory('Closed');
-
-  for (const ft of (next.foamTypes || [])) {
-    const key = ft.id || ft.productName || ft.name;
-    if (!key) continue;
-    const existing = jli.foamTypes[key] || { name: '', description: '' };
-    if ((existing.description || '').trim()) continue;
-    const cat = ft.category;
-    const seed = cat === 'Closed' ? closedText : cat === 'Open' ? openText : '';
-    if (seed) {
-      jli.foamTypes[key] = { name: existing.name || '', description: seed };
-    }
-  }
-
-  next.jobberLineItems = jli;
-  delete next.jobberDescriptions;
-  return { settings: next, changed: true };
-}
-
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
@@ -75,21 +21,7 @@ module.exports = async function handler(req, res) {
       if (result.length === 0) {
         return res.json({ settings: null });
       }
-      let stored = result[0].settings;
-      const { settings: migrated, changed } = migrateLegacyJobberDescriptions(stored);
-      if (changed) {
-        const toPersist = { ...migrated };
-        if (stored.adminPassword && !toPersist.adminPassword) {
-          toPersist.adminPassword = stored.adminPassword;
-        }
-        try {
-          await sql`UPDATE admin_settings SET settings = ${JSON.stringify(toPersist)}, updated_at = NOW() WHERE id = 1`;
-        } catch (persistErr) {
-          console.error('Persist migrated jobberDescriptions failed:', persistErr.message);
-        }
-        stored = toPersist;
-      }
-      const settings = { ...stored };
+      const settings = { ...result[0].settings };
       delete settings.adminPassword;
       res.json({ settings });
     } catch (err) {
@@ -106,9 +38,7 @@ module.exports = async function handler(req, res) {
       if (current[0].settings.adminPassword !== password) {
         return res.status(401).json({ error: 'Invalid password' });
       }
-      const incoming = { ...settings };
-      delete incoming.jobberDescriptions;
-      const updatedSettings = { ...incoming, adminPassword: current[0].settings.adminPassword };
+      const updatedSettings = { ...settings, adminPassword: current[0].settings.adminPassword };
       if (settings.newPassword) {
         updatedSettings.adminPassword = settings.newPassword;
         delete updatedSettings.newPassword;

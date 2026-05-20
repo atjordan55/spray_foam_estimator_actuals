@@ -161,7 +161,6 @@ const getDefaultState = () => ({
     generatorRuntime: 0,
   },
   sprayAreas: [createArea("Area 1")],
-  miscLineItems: [],
   actuals: {
     actualLaborHours: null,
     actualOpenGallons: null,
@@ -189,8 +188,6 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const [projectNotes, setProjectNotes] = useState(defaultState.projectNotes);
   const [globalInputs, setGlobalInputs] = useState(defaultState.globalInputs);
   const [sprayAreas, setSprayAreas] = useState(defaultState.sprayAreas);
-  const [miscLineItems, setMiscLineItems] = useState(defaultState.miscLineItems);
-  const [selectedMiscPresetId, setSelectedMiscPresetId] = useState('');
   const [actuals, setActuals] = useState(defaultState.actuals);
   const [actualsConfirmed, setActualsConfirmed] = useState(false);
   const [recentEstimates, setRecentEstimates] = useState([]);
@@ -1227,7 +1224,6 @@ export default function SprayFoamEstimator({ onAdmin }) {
       projectNotes, 
       globalInputs, 
       sprayAreas, 
-      miscLineItems,
       actuals,
       discountDollar,
       discountPercent,
@@ -1347,7 +1343,6 @@ export default function SprayFoamEstimator({ onAdmin }) {
     setGlobalInputs(data.globalInputs || getDefaultState().globalInputs);
     const migratedAreas = migrateSprayAreas(data.sprayAreas);
     setSprayAreas(migratedAreas);
-    setMiscLineItems(Array.isArray(data.miscLineItems) ? data.miscLineItems : []);
     // Back-compat: if no per-foam-type A/B exists but legacy global ISO/Resin do, and the estimate
     // uses exactly one foam type, seed the per-type map so the UI shows the values seamlessly.
     let hydratedABByFoamType = data.actuals?.actualABByFoamType ?? {};
@@ -1441,41 +1436,56 @@ export default function SprayFoamEstimator({ onAdmin }) {
       
       const lineItems = [];
       
-      // Token substitution for admin-configured Jobber line item name + description.
-      // Supported tokens: {{thickness}} {{rvalue}} {{sqft}} {{area}} {{areaType}} {{foamType}} {{coatingType}}
-      // No auto-append of the legacy "[Resulting in an effective R-Value of X]" line —
-      // use {{rvalue}} explicitly if you want it.
-      const applyJobberTokens = (template, ctx) => {
-        if (!template) return '';
-        return template
-          .replace(/\{\{\s*thickness\s*\}\}/gi, String(ctx.thickness ?? ''))
-          .replace(/\{\{\s*rvalue\s*\}\}/gi, ctx.rvalue ?? '')
-          .replace(/\{\{\s*sqft\s*\}\}/gi, ctx.sqft ?? '')
-          .replace(/\{\{\s*area\s*\}\}/gi, ctx.area ?? '')
-          .replace(/\{\{\s*areaType\s*\}\}/gi, ctx.areaType ?? '')
-          .replace(/\{\{\s*foamType\s*\}\}/gi, ctx.foamType ?? '')
-          .replace(/\{\{\s*coatingType\s*\}\}/gi, ctx.coatingType ?? '');
+      const getLineItemDescription = (area, foamApp, rValue, areaSqFt) => {
+        const thickness = foamApp.foamThickness;
+        const rValueFormatted = rValue.toFixed(1);
+        const category = foamApp.foamTypeCategory || foamApp.foamType;
+
+        // Token substitution for admin-configured descriptions.
+        // Supported tokens: {{thickness}} {{rvalue}} {{sqft}} {{area}} {{foamType}}
+        const applyTokens = (template) => template
+          .replace(/\{\{\s*thickness\s*\}\}/gi, String(thickness ?? ''))
+          .replace(/\{\{\s*rvalue\s*\}\}/gi, rValueFormatted)
+          .replace(/\{\{\s*sqft\s*\}\}/gi, areaSqFt != null ? String(Math.round(areaSqFt)) : '')
+          .replace(/\{\{\s*area\s*\}\}/gi, area.name || '')
+          .replace(/\{\{\s*foamType\s*\}\}/gi, foamApp.foamTypeName || category || '');
+
+        // Check admin-configured Jobber descriptions first
+        const descKey = `${area.areaType}-${category}`;
+        const adminDesc = adminSettings?.jobberDescriptions?.[descKey];
+        if (adminDesc) {
+          const filled = applyTokens(adminDesc);
+          // If the template already includes an R-Value token, trust the author and
+          // don't auto-append the legacy "[Resulting in an effective R-Value...]" line.
+          if (/\{\{\s*rvalue\s*\}\}/i.test(adminDesc)) {
+            return filled;
+          }
+          return `${filled}\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        
+        if (area.areaType === "Exterior Walls" && category === "Closed") {
+          return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high-performance thermal barrier, moisture seal, and structural enhancement. Includes sealing around all windows and doors as well as sealing bottom plates.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        if (area.areaType === "Exterior Walls" && category === "Open") {
+          return `Open-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high performance air seal, sound deadening, and high level thermal resistance. Includes sealing around all windows and doors as well as sealing bottom plates.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        if (area.areaType === "Roof Deck" && category === "Closed") {
+          return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high-performance air seal, moisture barrier, and superior thermal resistance.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        if (area.areaType === "Roof Deck" && category === "Open") {
+          return `Open cell spray foam applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high performance air seal, sound deadening, and high level thermal resistance.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+        }
+        return '';
       };
-
-      const jli = adminSettings?.jobberLineItems || {};
-
+      
       sprayAreas.forEach(area => {
         const areaSqFtForCalcs = calculateEffectiveSqFt(area);
         area.foamApplications.forEach(foamApp => {
           if (foamApp.applicationType === "Coating") {
             const calcs = calculateCoatingApplicationCost(foamApp, areaSqFtForCalcs);
-            const ctx = {
-              sqft: String(Math.round(areaSqFtForCalcs)),
-              area: area.name || '',
-              areaType: area.areaType || '',
-              coatingType: foamApp.coatingTypeName || '',
-            };
-            const entry = jli.coatingTypes?.[foamApp.coatingTypeId] || {};
-            const defaultName = `${area.name} - ${foamApp.coatingTypeName || 'Coating'}`;
-            const defaultDesc = `${calcs.containers.toFixed(2)} containers`;
             lineItems.push({
-              name: applyJobberTokens(entry.name || defaultName, ctx),
-              description: applyJobberTokens(entry.description || defaultDesc, ctx),
+              name: `${area.name} - ${foamApp.coatingTypeName || 'Coating'}`,
+              description: `${calcs.containers.toFixed(2)} containers`,
               quantity: Math.round(calcs.containers * 100) / 100,
               unitPrice: calcs.pricePerContainer || 0,
             });
@@ -1483,53 +1493,24 @@ export default function SprayFoamEstimator({ onAdmin }) {
           }
           const calcs = calculateFoamApplicationCost(area, foamApp);
           const sqft = Math.round(calcs.sqft);
+          const description = getLineItemDescription(area, foamApp, calcs.rValue, areaSqFtForCalcs);
           const category = foamApp.foamTypeCategory || foamApp.foamType;
           const displayName = foamApp.foamTypeName || `${category} Cell`;
-          const ctx = {
-            thickness: foamApp.foamThickness,
-            rvalue: calcs.rValue.toFixed(1),
-            sqft: String(Math.round(areaSqFtForCalcs)),
-            area: area.name || '',
-            areaType: area.areaType || '',
-            foamType: displayName,
-          };
-          const entry = jli.foamTypes?.[foamApp.foamTypeId] || {};
-          const defaultName = `${area.name} (${displayName} ${foamApp.foamThickness}in)`;
-          const defaultDesc = '';
+          
           lineItems.push({
-            name: applyJobberTokens(entry.name || defaultName, ctx),
-            description: applyJobberTokens(entry.description || defaultDesc, ctx),
+            name: `${area.name} (${displayName} ${foamApp.foamThickness}in)`,
+            description,
             quantity: sqft,
             unitPrice: calcs.pricePerSqFt,
           });
         });
       });
-
-      // Misc / one-off line items entered on the estimator.
-      (miscLineItems || []).forEach(item => {
-        const qty = parseFloat(item.quantity) || 0;
-        const price = parseFloat(item.unitPrice) || 0;
-        if (!item.name && qty === 0 && price === 0) return;
-        lineItems.push({
-          name: item.name || 'Misc Item',
-          description: item.description || '',
-          quantity: qty,
-          unitPrice: price,
-        });
-      });
-
+      
       const laborTotal = Math.round((baseLaborCost + laborMarkupAmount + additionalJobCostBase + additionalJobCostMarkup) * 100) / 100;
       if (laborTotal > 0) {
-        const laborEntry = jli.labor || {};
-        const totalSqFt = sprayAreas.reduce((sum, a) => sum + calculateEffectiveSqFt(a), 0);
-        const ctx = {
-          sqft: String(Math.round(totalSqFt)),
-        };
-        const defaultLaborName = 'Complete Spray Foam Insulation Solution';
-        const defaultLaborDesc = 'Includes a full-service spray foam insulation package: on-site evaluation, masking and surface prep, application of open or closed cell spray foam at the specified thickness, and post-job cleanup. Designed to deliver maximum R-value, air sealing, and moisture control for residential or commercial projects.';
         lineItems.push({
-          name: applyJobberTokens(laborEntry.name || defaultLaborName, ctx),
-          description: applyJobberTokens(laborEntry.description || defaultLaborDesc, ctx),
+          name: 'Complete Spray Foam Insulation Solution',
+          description: 'Includes a full-service spray foam insulation package: on-site evaluation, masking and surface prep, application of open or closed cell spray foam at the specified thickness, and post-job cleanup. Designed to deliver maximum R-value, air sealing, and moisture control for residential or commercial projects.',
           quantity: 1,
           unitPrice: laborTotal,
         });
@@ -2491,7 +2472,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
                             onChange={(e) => updateArea(areaIndex, 'areaType', e.target.value)}
                             className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           >
-                            {Array.from(new Set([...["General Area", "Exterior Walls", "Roof Deck", "Gable"], ...((adminSettings?.customAreaTypes) || [])])).map(opt => (
+                            {["General Area", "Exterior Walls", "Roof Deck", "Gable"].map(opt => (
                               <option key={opt} value={opt}>{opt}</option>
                             ))}
                           </select>
@@ -2960,142 +2941,6 @@ export default function SprayFoamEstimator({ onAdmin }) {
                   );
                 })}
               </div>
-            </div>
-
-            {/* Miscellaneous Line Items */}
-            <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm">
-              <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
-                <h2 className="text-xl font-bold text-gray-900">Miscellaneous Line Items</h2>
-                <div className="flex flex-wrap items-center gap-2">
-                  {Array.isArray(adminSettings?.miscItemPresets) && adminSettings.miscItemPresets.length > 0 && (
-                    <div className="flex items-center gap-1">
-                      <select
-                        value={selectedMiscPresetId}
-                        onChange={(e) => setSelectedMiscPresetId(e.target.value)}
-                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="">Choose a preset…</option>
-                        {adminSettings.miscItemPresets.map((p, i) => (
-                          <option key={p.id || i} value={p.id || `__idx_${i}`}>
-                            {p.name || '(unnamed preset)'}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={!selectedMiscPresetId}
-                        onClick={() => {
-                          const presets = adminSettings?.miscItemPresets || [];
-                          const preset = presets.find((p, i) => (p.id || `__idx_${i}`) === selectedMiscPresetId);
-                          if (!preset) return;
-                          setMiscLineItems([
-                            ...(miscLineItems || []),
-                            {
-                              id: Date.now() + Math.random(),
-                              name: preset.name || '',
-                              description: preset.description || '',
-                              quantity: preset.defaultQuantity ?? 1,
-                              unitPrice: preset.defaultUnitPrice ?? 0,
-                            },
-                          ]);
-                          setSelectedMiscPresetId('');
-                        }}
-                        className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg text-sm font-medium"
-                      >
-                        + Add from preset
-                      </button>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setMiscLineItems([...(miscLineItems || []), { id: Date.now() + Math.random(), name: '', description: '', quantity: 1, unitPrice: 0 }])}
-                    className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-sm font-medium"
-                  >
-                    + Add Item
-                  </button>
-                </div>
-              </div>
-              <p className="text-sm text-gray-500 mb-3">One-off services or items that should appear as separate line items on the Jobber quote.</p>
-              {(!miscLineItems || miscLineItems.length === 0) ? (
-                <p className="text-sm text-gray-400 italic">No miscellaneous items added.</p>
-              ) : (
-                <div className="space-y-3">
-                  {miscLineItems.map((item, idx) => (
-                    <div key={item.id || idx} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                        <div className="md:col-span-4">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
-                          <input
-                            type="text"
-                            value={item.name || ''}
-                            onChange={(e) => {
-                              const updated = [...miscLineItems];
-                              updated[idx] = { ...updated[idx], name: e.target.value };
-                              setMiscLineItems(updated);
-                            }}
-                            placeholder="e.g. Equipment Rental Day Rate"
-                            className="w-full border border-gray-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                        <div className="md:col-span-5">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-                          <input
-                            type="text"
-                            value={item.description || ''}
-                            onChange={(e) => {
-                              const updated = [...miscLineItems];
-                              updated[idx] = { ...updated[idx], description: e.target.value };
-                              setMiscLineItems(updated);
-                            }}
-                            placeholder="Optional details"
-                            className="w-full border border-gray-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                        <div className="md:col-span-1">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Qty</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={item.quantity ?? ''}
-                            onChange={(e) => {
-                              const updated = [...miscLineItems];
-                              updated[idx] = { ...updated[idx], quantity: e.target.value === '' ? '' : parseFloat(e.target.value) };
-                              setMiscLineItems(updated);
-                            }}
-                            className="w-full border border-gray-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                        <div className="md:col-span-1">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">$/Unit</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={item.unitPrice ?? ''}
-                            onChange={(e) => {
-                              const updated = [...miscLineItems];
-                              updated[idx] = { ...updated[idx], unitPrice: e.target.value === '' ? '' : parseFloat(e.target.value) };
-                              setMiscLineItems(updated);
-                            }}
-                            className="w-full border border-gray-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                        <div className="md:col-span-1 flex items-end">
-                          <button
-                            type="button"
-                            onClick={() => setMiscLineItems(miscLineItems.filter((_, i) => i !== idx))}
-                            className="w-full text-xs text-red-600 hover:text-red-800 hover:bg-red-50 py-2 rounded border border-red-200"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-xs text-gray-500 text-right">
-                        Line total: ${((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toFixed(2)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Project Notes */}
