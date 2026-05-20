@@ -1320,12 +1320,38 @@ export default function AdminConsole({ onBack }) {
         )}
 
         {/* Jobber Descriptions */}
-        {activeSection === 'jobberDesc' && (
+        {activeSection === 'jobberDesc' && (() => {
+          const SAMPLE = { thickness: '2', rvalue: '14.4', sqft: '1850', area: 'Main Floor' };
+          const applyTokens = (template, foamTypeLabel) => {
+            if (!template) return '';
+            let out = template
+              .replace(/\{\{\s*thickness\s*\}\}/gi, SAMPLE.thickness)
+              .replace(/\{\{\s*rvalue\s*\}\}/gi, SAMPLE.rvalue)
+              .replace(/\{\{\s*sqft\s*\}\}/gi, SAMPLE.sqft)
+              .replace(/\{\{\s*area\s*\}\}/gi, SAMPLE.area)
+              .replace(/\{\{\s*foamType\s*\}\}/gi, foamTypeLabel || '');
+            if (!/\{\{\s*rvalue\s*\}\}/i.test(template)) {
+              out += `\n[Resulting in an effective R-Value of ${SAMPLE.rvalue}]`;
+            }
+            return out;
+          };
+          const Preview = ({ template, foamTypeLabel }) => {
+            const trimmed = (template || '').trim();
+            if (!trimmed) return null;
+            return (
+              <div className="mt-1.5 text-xs">
+                <div className="text-gray-500 mb-0.5">Live preview (sample: 2" thick, R-14.4, 1,850 sq ft, "Main Floor"):</div>
+                <pre className="whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded p-2 text-gray-800 font-sans">{applyTokens(trimmed, foamTypeLabel)}</pre>
+              </div>
+            );
+          };
+          return (
           <div className="space-y-4">
             <SectionCard title="Jobber Quote — Labor Line Item Description">
               <div>
                 <label className={labelClass}>Labor Line Item Description</label>
                 <textarea rows={3} value={settings.jobberDescriptions['labor'] || ''} onChange={(e) => updateJobberDesc('labor', e.target.value)} className={inputClass} />
+                <Preview template={settings.jobberDescriptions['labor']} foamTypeLabel="" />
               </div>
             </SectionCard>
             <SectionCard title="Jobber Quote — Material Line Item Descriptions">
@@ -1351,6 +1377,7 @@ export default function AdminConsole({ onBack }) {
                         <div key={key}>
                           <label className={labelClass}>{cat} Cell</label>
                           <textarea rows={2} value={settings.jobberDescriptions[key] || ''} onChange={(e) => updateJobberDesc(key, e.target.value)} className={inputClass} />
+                          <Preview template={settings.jobberDescriptions[key]} foamTypeLabel={`${cat} Cell`} />
                         </div>
                       );
                     })}
@@ -1359,7 +1386,8 @@ export default function AdminConsole({ onBack }) {
               ))}
             </SectionCard>
           </div>
-        )}
+          );
+        })()}
 
         {/* Password */}
         {activeSection === 'password' && (
