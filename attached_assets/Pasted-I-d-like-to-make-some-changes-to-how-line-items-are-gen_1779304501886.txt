@@ -1,0 +1,55 @@
+I'd like to make some changes to how line items are generated for Jobber Quotes
+
+Before that let's talk through how information is currently derived from the estimator to create Jobber Quotes:
+Currently to create a material Jobber line item:
+*Line Item name - Area Name ((Foam Type) (Foam Thickness)) 
+*Line Item description - Dictated by the Jobber Descriptions outlined in the Admin Console (Jobber Quote — Material Line Item Descriptions) (Based off of Area Type and Foam Type ie. Exterior Walls / Closed Cell description block) 
+*Line Item Quantity - Equal to (Area (Sq Ft))
+*Line Item Unit Price - Equal to ($/Sq Ft)
+
+To create a labor line item:
+*Line Item name - hard coded to be (Complete Spray Foam Insulation Solution)
+*Line Item description - Dictated by the Jobber Descriptions outlined in the Admin Console (Jobber Quote — Labor Line Item Description)
+*Line Item Quantity - 1
+*Line Item Unit Price - All costs in the estimator estimate outside of the cost for materials and material markup
+
+Let me know if you agree with this assessment before we proceed. Please elaborate if deemed necessary to include additional details to consider. 
+
+
+The current setup does not account for coating types and getting them added to the Jobber Quote
+
+We need to make some changes that allow for all foam and coating types to be added to the Jobber Quotes
+
+
+Let's start with the Jobber Descriptions section in the Admin Console:
+
+-I like the Dynamic tokens area as a point of reference for administrators and would like to keep this section. In addition to the Dynamic tokens currently being presented I'd like to add additional Dynamic tokens for the following:
+*Foam Type
+*Coating Type
+*Area Type
+
+- Let's pause here to test -
+
+-Instead of using 'Jobber Quote - Labor Line Item Description' for the current section we change that to 'Jobber Quote - Labor Line Item' (Set default names and descriptions for the Labor Line Item sent to Jobber':
+*It contains the first field called 'Labor Line Item Name'. This will allow a default name to be used for this line item or a custom name utilizing Dynamic tokens to be sent to Jobber.
+*It contains a second field called 'Labor Line Item Description'. This will allow a default description to be used for this line item or a custom description utilizing Dynamic tokens to be sent to Jobber.
+Continue to do the following when creating the estimate:
+-Line Item Quantity - 1
+-Line Item Unit Price - All costs in the estimator estimate outside of the cost for materials and material markup
+
+- Let's pause here to test - 
+
+Instead of using 'Jobber Quote - Material Line Item Description' lets name this section 'Jobber Quote - Material Line Item'. (Set default names and descriptions for each Foam Type and Coating Type sent to Jobber.
+*Let's not use the Area type and foam category combinations any longer
+*Instead provide a drop down containing all Foam Types and Coating Types. Selecting one of these will produce two fields associated with that item (Material Line Item Name and Material Line Item Description)
+*The first field (Material Line Item Name) will allow a default name to be used for this line item or a custom name utilizing Dynamic tokens to be sent to Jobber (i.e. {{foamType}} ({{thickness}} inches) - producing 'Enverge 2lb (2 inches)' as the line item name being used in Jobber if that is the Foam Type and thickness selected in the estimator.
+*The second field (Material Line Item Description) will allow a default description to be used for this line item or a custom description utilizing Dynamic tokens to be sent to Jobber.(Use similar logic that is used for the Material Line Item Name)
+Continue to use the following when creating the estimate:
+-Line Item Quantity - Equal to (Area (Sq Ft)) stated in estimator
+-Line Item Unit Price - Equal to ($/Sq Ft) stated in estimator
+
+*This will be the method used for all Foam Types and Coating Types entered into the Admin Console
+
+-Let's pause here to test -
+
+*Currently there seems to be a bug that is appending the following '[Resulting in an effective R-Value of 14.4]' at the end of every description in the Live preview. We need to remove that. The Live preview should show what the outcome of all of the text the user provides along with using any of the Dynamic tokens to confirm how it will actually be displayed in the Jobber Quote. 
