@@ -1349,11 +1349,19 @@ export default function AdminConsole({ onBack }) {
           };
           return (
           <div className="space-y-4">
-            <SectionCard title="Jobber Quote — Labor Line Item Description">
-              <div>
-                <label className={labelClass}>Labor Line Item Description</label>
-                <textarea rows={3} value={settings.jobberDescriptions['labor'] || ''} onChange={(e) => updateJobberDesc('labor', e.target.value)} className={inputClass} />
-                <Preview template={settings.jobberDescriptions['labor']} foamTypeLabel="" />
+            <SectionCard title="Jobber Quote — Labor Line Item">
+              <p className="text-sm text-gray-500 mb-3">Set default name and description for the Labor Line Item sent to Jobber. Dynamic tokens are supported in both fields.</p>
+              <div className="space-y-4">
+                <div>
+                  <label className={labelClass}>Labor Line Item Name</label>
+                  <input type="text" value={settings.jobberDescriptions['laborName'] || ''} onChange={(e) => updateJobberDesc('laborName', e.target.value)} className={inputClass} placeholder="Complete Spray Foam Insulation Solution" />
+                  <Preview template={settings.jobberDescriptions['laborName']} />
+                </div>
+                <div>
+                  <label className={labelClass}>Labor Line Item Description</label>
+                  <textarea rows={3} value={settings.jobberDescriptions['labor'] || ''} onChange={(e) => updateJobberDesc('labor', e.target.value)} className={inputClass} />
+                  <Preview template={settings.jobberDescriptions['labor']} />
+                </div>
               </div>
             </SectionCard>
             <SectionCard title="Jobber Quote — Material Line Item Descriptions">

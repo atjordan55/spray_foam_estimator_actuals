@@ -1510,9 +1510,33 @@ export default function SprayFoamEstimator({ onAdmin }) {
       
       const laborTotal = Math.round((baseLaborCost + laborMarkupAmount + additionalJobCostBase + additionalJobCostMarkup) * 100) / 100;
       if (laborTotal > 0) {
+        const LABOR_NAME_DEFAULT = 'Complete Spray Foam Insulation Solution';
+        const LABOR_DESC_DEFAULT = 'Includes a full-service spray foam insulation package: on-site evaluation, masking and surface prep, application of open or closed cell spray foam at the specified thickness, and post-job cleanup. Designed to deliver maximum R-value, air sealing, and moisture control for residential or commercial projects.';
+
+        // Labor tokens substitute with blanks for foam/area-specific values since
+        // the labor line item is not bound to a specific application.
+        const applyLaborTokens = (template) => template
+          .replace(/\{\{\s*thickness\s*\}\}/gi, '')
+          .replace(/\{\{\s*rvalue\s*\}\}/gi, '')
+          .replace(/\{\{\s*sqft\s*\}\}/gi, '')
+          .replace(/\{\{\s*area\s*\}\}/gi, '')
+          .replace(/\{\{\s*foamType\s*\}\}/gi, '')
+          .replace(/\{\{\s*coatingType\s*\}\}/gi, '')
+          .replace(/\{\{\s*areaType\s*\}\}/gi, '');
+
+        const adminLaborName = adminSettings?.jobberDescriptions?.['laborName'];
+        const adminLaborDesc = adminSettings?.jobberDescriptions?.['labor'];
+
+        const laborName = (adminLaborName && adminLaborName.trim())
+          ? applyLaborTokens(adminLaborName).trim() || LABOR_NAME_DEFAULT
+          : LABOR_NAME_DEFAULT;
+        const laborDescription = (adminLaborDesc && adminLaborDesc.trim())
+          ? applyLaborTokens(adminLaborDesc)
+          : LABOR_DESC_DEFAULT;
+
         lineItems.push({
-          name: 'Complete Spray Foam Insulation Solution',
-          description: 'Includes a full-service spray foam insulation package: on-site evaluation, masking and surface prep, application of open or closed cell spray foam at the specified thickness, and post-job cleanup. Designed to deliver maximum R-value, air sealing, and moisture control for residential or commercial projects.',
+          name: laborName,
+          description: laborDescription,
           quantity: 1,
           unitPrice: laborTotal,
         });
