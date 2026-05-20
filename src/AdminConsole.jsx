@@ -471,9 +471,12 @@ export default function AdminConsole({ onBack }) {
     wasteDisposalMarkupPercent: 30,
     equipmentRentalMarkupPercent: 30,
     jobberDescriptions: {},
+    jobberLineItems: { labor: { name: '', description: '' }, foamTypes: {}, coatingTypes: {} },
+    customAreaTypes: [],
     labor: { laborRate: 65, laborMarkup: 40 },
     project: { travelDistance: 50, travelRate: 0.70, wasteDisposal: 50, equipmentRental: 0 },
     commission: { tier1Threshold: 30, tier1Rate: 10, tier2Threshold: 35, tier2Rate: 12 },
+    miscItemPresets: [],
   });
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -622,9 +625,16 @@ export default function AdminConsole({ onBack }) {
           wasteDisposalMarkupPercent: s.wasteDisposalMarkupPercent ?? legacyMarkup,
           equipmentRentalMarkupPercent: s.equipmentRentalMarkupPercent ?? legacyMarkup,
           jobberDescriptions: s.jobberDescriptions || {},
+          jobberLineItems: {
+            labor: s.jobberLineItems?.labor || { name: '', description: '' },
+            foamTypes: s.jobberLineItems?.foamTypes || {},
+            coatingTypes: s.jobberLineItems?.coatingTypes || {},
+          },
+          customAreaTypes: Array.isArray(s.customAreaTypes) ? s.customAreaTypes : [],
           labor: s.labor || { laborRate: 65, laborMarkup: 40 },
           project: s.project || { travelDistance: 50, travelRate: 0.70, wasteDisposal: 50, equipmentRental: 0 },
           commission: s.commission || { tier1Threshold: 30, tier1Rate: 10, tier2Threshold: 35, tier2Rate: 12 },
+          miscItemPresets: Array.isArray(s.miscItemPresets) ? s.miscItemPresets : [],
         });
       }
     } catch (err) {
@@ -661,6 +671,13 @@ export default function AdminConsole({ onBack }) {
           wasteDisposalMarkupPercent: s.wasteDisposalMarkupPercent ?? prev.wasteDisposalMarkupPercent,
           equipmentRentalMarkupPercent: s.equipmentRentalMarkupPercent ?? prev.equipmentRentalMarkupPercent,
           jobberDescriptions: s.jobberDescriptions || prev.jobberDescriptions,
+          jobberLineItems: {
+            labor: s.jobberLineItems?.labor || prev.jobberLineItems?.labor || { name: '', description: '' },
+            foamTypes: s.jobberLineItems?.foamTypes || prev.jobberLineItems?.foamTypes || {},
+            coatingTypes: s.jobberLineItems?.coatingTypes || prev.jobberLineItems?.coatingTypes || {},
+          },
+          customAreaTypes: Array.isArray(s.customAreaTypes) ? s.customAreaTypes : (prev.customAreaTypes || []),
+          miscItemPresets: Array.isArray(s.miscItemPresets) ? s.miscItemPresets : (prev.miscItemPresets || []),
         }));
         setSaveSuccess('Settings saved successfully');
         setNewPassword('');
@@ -735,6 +752,40 @@ export default function AdminConsole({ onBack }) {
     setSettings(prev => ({ ...prev, commission: { ...prev.commission, [key]: isNaN(parsed) ? 0 : parsed } }));
   };
 
+  const addMiscPreset = () => {
+    setSettings(prev => ({
+      ...prev,
+      miscItemPresets: [
+        ...(prev.miscItemPresets || []),
+        { id: `misc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: '', description: '', defaultQuantity: 1, defaultUnitPrice: 0 },
+      ],
+    }));
+  };
+  const updateMiscPreset = (index, field, value) => {
+    setSettings(prev => {
+      const list = [...(prev.miscItemPresets || [])];
+      if (!list[index]) return prev;
+      let v = value;
+      if (field === 'defaultQuantity' || field === 'defaultUnitPrice') {
+        v = value === '' ? '' : (isNaN(parseFloat(value)) ? 0 : parseFloat(value));
+      }
+      list[index] = { ...list[index], [field]: v };
+      return { ...prev, miscItemPresets: list };
+    });
+  };
+  const removeMiscPreset = (index) => {
+    setSettings(prev => ({ ...prev, miscItemPresets: (prev.miscItemPresets || []).filter((_, i) => i !== index) }));
+  };
+  const moveMiscPreset = (index, direction) => {
+    setSettings(prev => {
+      const list = [...(prev.miscItemPresets || [])];
+      const target = index + direction;
+      if (target < 0 || target >= list.length) return prev;
+      [list[index], list[target]] = [list[target], list[index]];
+      return { ...prev, miscItemPresets: list };
+    });
+  };
+
   const updateJobberDesc = (key, value) => {
     setSettings(prev => ({ ...prev, jobberDescriptions: { ...prev.jobberDescriptions, [key]: value } }));
   };
@@ -779,10 +830,34 @@ export default function AdminConsole({ onBack }) {
     { id: 'labor', label: 'Labor' },
     { id: 'project', label: 'Project' },
     { id: 'commission', label: 'Commission' },
+    { id: 'miscPresets', label: 'Misc Item Presets' },
     { id: 'inventory', label: '🪣 Inventory' },
+    { id: 'areaTypes', label: 'Area Types' },
     { id: 'jobberDesc', label: 'Jobber Descriptions' },
     { id: 'password', label: 'Password' },
   ];
+  const BUILTIN_AREA_TYPES = ['General Area', 'Exterior Walls', 'Roof Deck', 'Gable'];
+  const updateJobberLineItem = (group, key, field, value) => {
+    setSettings(prev => {
+      const jli = prev.jobberLineItems || { labor: { name: '', description: '' }, foamTypes: {}, coatingTypes: {} };
+      if (group === 'labor') {
+        return { ...prev, jobberLineItems: { ...jli, labor: { ...(jli.labor || {}), [field]: value } } };
+      }
+      const groupMap = { ...(jli[group] || {}) };
+      groupMap[key] = { ...(groupMap[key] || { name: '', description: '' }), [field]: value };
+      return { ...prev, jobberLineItems: { ...jli, [group]: groupMap } };
+    });
+  };
+  const addCustomAreaType = (name) => {
+    const v = (name || '').trim();
+    if (!v) return;
+    if (BUILTIN_AREA_TYPES.includes(v)) return;
+    if ((settings.customAreaTypes || []).includes(v)) return;
+    setSettings(prev => ({ ...prev, customAreaTypes: [...(prev.customAreaTypes || []), v] }));
+  };
+  const removeCustomAreaType = (name) => {
+    setSettings(prev => ({ ...prev, customAreaTypes: (prev.customAreaTypes || []).filter(a => a !== name) }));
+  };
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -981,6 +1056,99 @@ export default function AdminConsole({ onBack }) {
               {settings.commission.tier1Rate}% of net profit at {settings.commission.tier1Threshold}–{(settings.commission.tier2Threshold - 0.01).toFixed(2)}% margin, &nbsp;
               {settings.commission.tier2Rate}% at ≥{settings.commission.tier2Threshold}%. No commission below {settings.commission.tier1Threshold}%.
             </p>
+          </SectionCard>
+        )}
+
+        {/* Misc Item Presets */}
+        {activeSection === 'miscPresets' && (
+          <SectionCard title="Misc Item Presets">
+            <p className="text-sm text-gray-500 mb-4">
+              Reusable miscellaneous line items (equipment rental, dump fees, mobilization, etc.) that estimators can quickly insert into the Misc Line Items section. Reorder with the arrows; the order here is what users see in the picker.
+            </p>
+            {(!settings.miscItemPresets || settings.miscItemPresets.length === 0) ? (
+              <p className="text-sm text-gray-400 italic mb-4">No presets configured yet.</p>
+            ) : (
+              <div className="space-y-3 mb-4">
+                {settings.miscItemPresets.map((preset, index) => (
+                  <div key={preset.id || index} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-1 flex md:flex-col gap-1 md:gap-1 md:items-stretch">
+                        <button
+                          type="button"
+                          onClick={() => moveMiscPreset(index, -1)}
+                          disabled={index === 0}
+                          className="flex-1 text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                          title="Move up"
+                        >▲</button>
+                        <button
+                          type="button"
+                          onClick={() => moveMiscPreset(index, 1)}
+                          disabled={index === settings.miscItemPresets.length - 1}
+                          className="flex-1 text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                          title="Move down"
+                        >▼</button>
+                      </div>
+                      <div className="md:col-span-3">
+                        <label className={labelClass}>Name</label>
+                        <input
+                          type="text"
+                          value={preset.name || ''}
+                          onChange={(e) => updateMiscPreset(index, 'name', e.target.value)}
+                          placeholder="e.g. Equipment Rental Day Rate"
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="md:col-span-5">
+                        <label className={labelClass}>Description</label>
+                        <input
+                          type="text"
+                          value={preset.description || ''}
+                          onChange={(e) => updateMiscPreset(index, 'description', e.target.value)}
+                          placeholder="Optional details"
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="md:col-span-1">
+                        <label className={labelClass}>Qty</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={preset.defaultQuantity ?? ''}
+                          onChange={(e) => updateMiscPreset(index, 'defaultQuantity', e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="md:col-span-1">
+                        <label className={labelClass}>$/Unit</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={preset.defaultUnitPrice ?? ''}
+                          onChange={(e) => updateMiscPreset(index, 'defaultUnitPrice', e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="md:col-span-1 flex items-end">
+                        <button
+                          type="button"
+                          onClick={() => removeMiscPreset(index)}
+                          className="w-full text-xs text-red-600 hover:text-red-800 hover:bg-red-50 py-2 rounded border border-red-200"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={addMiscPreset}
+              className="mt-2 px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm hover:bg-blue-100 font-medium"
+            >
+              + Add Preset
+            </button>
+            <p className="text-xs text-gray-400 mt-3">Remember to click "Save Settings" at the top to persist changes.</p>
           </SectionCard>
         )}
 
@@ -1319,71 +1487,186 @@ export default function AdminConsole({ onBack }) {
           </div>
         )}
 
+        {/* Area Types */}
+        {activeSection === 'areaTypes' && (
+          <SectionCard title="Area Types">
+            <p className="text-sm text-gray-500 mb-3">Manage area types available in the Estimator's "Area Type" dropdown. Built-in types are locked because they drive the estimator's geometry/pitch calculations. Add custom types for any other surface category you need.</p>
+            <div className="mb-5">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Built-in (locked)</h4>
+              <div className="flex flex-wrap gap-2">
+                {BUILTIN_AREA_TYPES.map(name => (
+                  <span key={name} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 border border-gray-300 px-3 py-1 rounded-full text-sm">
+                    <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 1110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"/></svg>
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Custom area types</h4>
+              {(settings.customAreaTypes || []).length === 0 ? (
+                <p className="text-sm text-gray-400 italic mb-3">No custom area types yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {(settings.customAreaTypes || []).map(name => (
+                    <span key={name} className="inline-flex items-center gap-2 bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1 rounded-full text-sm">
+                      {name}
+                      <button type="button" onClick={() => removeCustomAreaType(name)} className="text-blue-600 hover:text-red-600 font-bold" title="Remove">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 max-w-md">
+                <input
+                  type="text"
+                  placeholder="e.g. Crawl Space, Garage Ceiling"
+                  className={inputClass}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCustomAreaType(e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  id="new-area-type-input"
+                />
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium whitespace-nowrap"
+                  onClick={() => {
+                    const el = document.getElementById('new-area-type-input');
+                    if (el) { addCustomAreaType(el.value); el.value = ''; }
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Save Settings (top right) to make new types available in the Estimator.</p>
+            </div>
+          </SectionCard>
+        )}
+
         {/* Jobber Descriptions */}
         {activeSection === 'jobberDesc' && (() => {
-          const SAMPLE = { thickness: '2', rvalue: '14.4', sqft: '1850', area: 'Main Floor' };
-          const applyTokens = (template, foamTypeLabel) => {
+          const SAMPLE = { thickness: '2', rvalue: '14.4', sqft: '1850', area: 'Main Floor', areaType: 'Exterior Walls' };
+          const applyTokens = (template, ctx) => {
             if (!template) return '';
-            let out = template
+            return template
               .replace(/\{\{\s*thickness\s*\}\}/gi, SAMPLE.thickness)
               .replace(/\{\{\s*rvalue\s*\}\}/gi, SAMPLE.rvalue)
               .replace(/\{\{\s*sqft\s*\}\}/gi, SAMPLE.sqft)
               .replace(/\{\{\s*area\s*\}\}/gi, SAMPLE.area)
-              .replace(/\{\{\s*foamType\s*\}\}/gi, foamTypeLabel || '');
-            if (!/\{\{\s*rvalue\s*\}\}/i.test(template)) {
-              out += `\n[Resulting in an effective R-Value of ${SAMPLE.rvalue}]`;
-            }
-            return out;
+              .replace(/\{\{\s*areaType\s*\}\}/gi, SAMPLE.areaType)
+              .replace(/\{\{\s*foamType\s*\}\}/gi, ctx?.foamType || '')
+              .replace(/\{\{\s*coatingType\s*\}\}/gi, ctx?.coatingType || '');
           };
-          const Preview = ({ template, foamTypeLabel }) => {
-            const trimmed = (template || '').trim();
-            if (!trimmed) return null;
+          const Preview = ({ name, description, ctx, label }) => {
+            const n = (name || '').trim();
+            const d = (description || '').trim();
+            if (!n && !d) return null;
             return (
-              <div className="mt-1.5 text-xs">
-                <div className="text-gray-500 mb-0.5">Live preview (sample: 2" thick, R-14.4, 1,850 sq ft, "Main Floor"):</div>
-                <pre className="whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded p-2 text-gray-800 font-sans">{applyTokens(trimmed, foamTypeLabel)}</pre>
+              <div className="mt-2 text-xs">
+                <div className="text-gray-500 mb-0.5">Live preview{label ? ` (${label})` : ''}:</div>
+                <div className="bg-gray-50 border border-gray-200 rounded p-2 text-gray-800">
+                  {n && <div className="font-semibold mb-1">{applyTokens(n, ctx)}</div>}
+                  {d && <pre className="whitespace-pre-wrap font-sans m-0">{applyTokens(d, ctx)}</pre>}
+                </div>
               </div>
             );
           };
+          const jli = settings.jobberLineItems || { labor: {}, foamTypes: {}, coatingTypes: {} };
+          const laborEntry = jli.labor || { name: '', description: '' };
           return (
           <div className="space-y-4">
-            <SectionCard title="Jobber Quote — Labor Line Item Description">
-              <div>
-                <label className={labelClass}>Labor Line Item Description</label>
-                <textarea rows={3} value={settings.jobberDescriptions['labor'] || ''} onChange={(e) => updateJobberDesc('labor', e.target.value)} className={inputClass} />
-                <Preview template={settings.jobberDescriptions['labor']} foamTypeLabel="" />
-              </div>
-            </SectionCard>
-            <SectionCard title="Jobber Quote — Material Line Item Descriptions">
-              <p className="text-sm text-gray-500 mb-2">Set default descriptions for each area type and foam category combination sent to Jobber.</p>
-              <div className="text-xs text-gray-600 bg-blue-50 border border-blue-200 rounded p-3 mb-4">
-                <p className="font-semibold mb-1">Dynamic tokens — paste these into any description and they'll be replaced with live estimate values when the quote is sent to Jobber:</p>
+            <SectionCard title="Available Dynamic Tokens">
+              <div className="text-xs text-gray-700 bg-blue-50 border border-blue-200 rounded p-3">
+                <p className="font-semibold mb-1">Use any of these tokens in a name or description below. They'll be replaced with live estimate values when the quote is sent to Jobber. The live preview shows exactly what Jobber will receive.</p>
                 <ul className="list-disc ml-5 space-y-0.5">
-                  <li><code className="bg-white px-1 rounded">{'{{thickness}}'}</code> — foam thickness in inches (e.g. <code>2</code>)</li>
-                  <li><code className="bg-white px-1 rounded">{'{{rvalue}}'}</code> — calculated R-Value, 1 decimal (e.g. <code>14.4</code>). If used, the legacy "[Resulting in an effective R-Value of X]" line is <em>not</em> auto-appended.</li>
+                  <li><code className="bg-white px-1 rounded">{'{{thickness}}'}</code> — foam thickness in inches</li>
+                  <li><code className="bg-white px-1 rounded">{'{{rvalue}}'}</code> — calculated R-Value, 1 decimal</li>
                   <li><code className="bg-white px-1 rounded">{'{{sqft}}'}</code> — effective square footage for this area</li>
                   <li><code className="bg-white px-1 rounded">{'{{area}}'}</code> — area name (e.g. <code>Main Floor</code>)</li>
+                  <li><code className="bg-white px-1 rounded">{'{{areaType}}'}</code> — area type (e.g. <code>Exterior Walls</code>)</li>
                   <li><code className="bg-white px-1 rounded">{'{{foamType}}'}</code> — foam product name (e.g. <code>Closed Cell 2.0</code>)</li>
+                  <li><code className="bg-white px-1 rounded">{'{{coatingType}}'}</code> — coating product name</li>
                 </ul>
-                <p className="mt-2">Example: <code className="bg-white px-1 rounded">…applied at an average depth of {'{{thickness}}'} inches…</code> becomes <code className="bg-white px-1 rounded">…applied at an average depth of 2 inches…</code></p>
+                <p className="mt-2 text-gray-600">Sample preview values: thickness=2", R=14.4, sqft=1,850, area="Main Floor", areaType="Exterior Walls".</p>
               </div>
-              {AREA_TYPES.map(areaType => (
-                <div key={areaType} className="mb-5">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">{areaType}</h4>
-                  <div className="space-y-3">
-                    {FOAM_CATEGORIES.map(cat => {
-                      const key = `${areaType}-${cat}`;
-                      return (
-                        <div key={key}>
-                          <label className={labelClass}>{cat} Cell</label>
-                          <textarea rows={2} value={settings.jobberDescriptions[key] || ''} onChange={(e) => updateJobberDesc(key, e.target.value)} className={inputClass} />
-                          <Preview template={settings.jobberDescriptions[key]} foamTypeLabel={`${cat} Cell`} />
-                        </div>
-                      );
-                    })}
-                  </div>
+            </SectionCard>
+
+            <SectionCard title="Labor Line Item">
+              <p className="text-sm text-gray-500 mb-3">Shown on the Jobber quote as a single line for total labor & overhead.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className={labelClass}>Name</label>
+                  <input type="text" value={laborEntry.name || ''} onChange={(e) => updateJobberLineItem('labor', null, 'name', e.target.value)} className={inputClass} placeholder="Complete Spray Foam Insulation Solution" />
                 </div>
-              ))}
+                <div>
+                  <label className={labelClass}>Description</label>
+                  <textarea rows={3} value={laborEntry.description || ''} onChange={(e) => updateJobberLineItem('labor', null, 'description', e.target.value)} className={inputClass} placeholder="Includes a full-service spray foam insulation package…" />
+                </div>
+                <Preview name={laborEntry.name} description={laborEntry.description} ctx={{}} />
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Foam Types">
+              {(settings.foamTypes || []).length === 0 ? (
+                <p className="text-sm text-gray-400 italic">No foam types configured yet. Add foam types in the Foam Types tab first.</p>
+              ) : (
+                <div className="space-y-5">
+                  {(settings.foamTypes || []).map(ft => {
+                    const key = ft.id || ft.productName || ft.name;
+                    const entry = jli.foamTypes?.[key] || { name: '', description: '' };
+                    const label = ft.productName || ft.name || key;
+                    return (
+                      <div key={key} className="border-b border-gray-100 pb-4 last:border-0">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">{label}</h4>
+                        <div className="space-y-2">
+                          <div>
+                            <label className={labelClass}>Name</label>
+                            <input type="text" value={entry.name || ''} onChange={(e) => updateJobberLineItem('foamTypes', key, 'name', e.target.value)} className={inputClass} placeholder={`{{area}} (${label} {{thickness}}in)`} />
+                          </div>
+                          <div>
+                            <label className={labelClass}>Description</label>
+                            <textarea rows={3} value={entry.description || ''} onChange={(e) => updateJobberLineItem('foamTypes', key, 'description', e.target.value)} className={inputClass} placeholder="Example: Closed-cell spray foam applied at {{thickness}} inches… [Resulting in an effective R-Value of {{rvalue}}]" />
+                          </div>
+                          <Preview name={entry.name} description={entry.description} ctx={{ foamType: label }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Coating Types">
+              {(settings.coatingTypes || []).length === 0 ? (
+                <p className="text-sm text-gray-400 italic">No coating types configured yet. Add coating types in the Coating Types tab first.</p>
+              ) : (
+                <div className="space-y-5">
+                  {(settings.coatingTypes || []).map(ct => {
+                    const key = ct.id || ct.productName || ct.name;
+                    const entry = jli.coatingTypes?.[key] || { name: '', description: '' };
+                    const label = ct.productName || ct.name || key;
+                    return (
+                      <div key={key} className="border-b border-gray-100 pb-4 last:border-0">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">{label}</h4>
+                        <div className="space-y-2">
+                          <div>
+                            <label className={labelClass}>Name</label>
+                            <input type="text" value={entry.name || ''} onChange={(e) => updateJobberLineItem('coatingTypes', key, 'name', e.target.value)} className={inputClass} placeholder={`{{area}} - ${label}`} />
+                          </div>
+                          <div>
+                            <label className={labelClass}>Description</label>
+                            <textarea rows={3} value={entry.description || ''} onChange={(e) => updateJobberLineItem('coatingTypes', key, 'description', e.target.value)} className={inputClass} placeholder="Example: {{coatingType}} applied at full coverage to {{sqft}} sq ft." />
+                          </div>
+                          <Preview name={entry.name} description={entry.description} ctx={{ coatingType: label }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </SectionCard>
           </div>
           );
