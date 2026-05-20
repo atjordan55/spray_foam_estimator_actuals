@@ -190,6 +190,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const [globalInputs, setGlobalInputs] = useState(defaultState.globalInputs);
   const [sprayAreas, setSprayAreas] = useState(defaultState.sprayAreas);
   const [miscLineItems, setMiscLineItems] = useState(defaultState.miscLineItems);
+  const [selectedMiscPresetId, setSelectedMiscPresetId] = useState('');
   const [actuals, setActuals] = useState(defaultState.actuals);
   const [actualsConfirmed, setActualsConfirmed] = useState(false);
   const [recentEstimates, setRecentEstimates] = useState([]);
@@ -2963,15 +2964,56 @@ export default function SprayFoamEstimator({ onAdmin }) {
 
             {/* Miscellaneous Line Items */}
             <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
                 <h2 className="text-xl font-bold text-gray-900">Miscellaneous Line Items</h2>
-                <button
-                  type="button"
-                  onClick={() => setMiscLineItems([...(miscLineItems || []), { id: Date.now() + Math.random(), name: '', description: '', quantity: 1, unitPrice: 0 }])}
-                  className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-sm font-medium"
-                >
-                  + Add Item
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {Array.isArray(adminSettings?.miscItemPresets) && adminSettings.miscItemPresets.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={selectedMiscPresetId}
+                        onChange={(e) => setSelectedMiscPresetId(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">Choose a preset…</option>
+                        {adminSettings.miscItemPresets.map((p, i) => (
+                          <option key={p.id || i} value={p.id || `__idx_${i}`}>
+                            {p.name || '(unnamed preset)'}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={!selectedMiscPresetId}
+                        onClick={() => {
+                          const presets = adminSettings?.miscItemPresets || [];
+                          const preset = presets.find((p, i) => (p.id || `__idx_${i}`) === selectedMiscPresetId);
+                          if (!preset) return;
+                          setMiscLineItems([
+                            ...(miscLineItems || []),
+                            {
+                              id: Date.now() + Math.random(),
+                              name: preset.name || '',
+                              description: preset.description || '',
+                              quantity: preset.defaultQuantity ?? 1,
+                              unitPrice: preset.defaultUnitPrice ?? 0,
+                            },
+                          ]);
+                          setSelectedMiscPresetId('');
+                        }}
+                        className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg text-sm font-medium"
+                      >
+                        + Add from preset
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setMiscLineItems([...(miscLineItems || []), { id: Date.now() + Math.random(), name: '', description: '', quantity: 1, unitPrice: 0 }])}
+                    className="bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-sm font-medium"
+                  >
+                    + Add Item
+                  </button>
+                </div>
               </div>
               <p className="text-sm text-gray-500 mb-3">One-off services or items that should appear as separate line items on the Jobber quote.</p>
               {(!miscLineItems || miscLineItems.length === 0) ? (

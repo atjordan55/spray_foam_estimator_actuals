@@ -476,6 +476,7 @@ export default function AdminConsole({ onBack }) {
     labor: { laborRate: 65, laborMarkup: 40 },
     project: { travelDistance: 50, travelRate: 0.70, wasteDisposal: 50, equipmentRental: 0 },
     commission: { tier1Threshold: 30, tier1Rate: 10, tier2Threshold: 35, tier2Rate: 12 },
+    miscItemPresets: [],
   });
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -633,6 +634,7 @@ export default function AdminConsole({ onBack }) {
           labor: s.labor || { laborRate: 65, laborMarkup: 40 },
           project: s.project || { travelDistance: 50, travelRate: 0.70, wasteDisposal: 50, equipmentRental: 0 },
           commission: s.commission || { tier1Threshold: 30, tier1Rate: 10, tier2Threshold: 35, tier2Rate: 12 },
+          miscItemPresets: Array.isArray(s.miscItemPresets) ? s.miscItemPresets : [],
         });
       }
     } catch (err) {
@@ -675,6 +677,7 @@ export default function AdminConsole({ onBack }) {
             coatingTypes: s.jobberLineItems?.coatingTypes || prev.jobberLineItems?.coatingTypes || {},
           },
           customAreaTypes: Array.isArray(s.customAreaTypes) ? s.customAreaTypes : (prev.customAreaTypes || []),
+          miscItemPresets: Array.isArray(s.miscItemPresets) ? s.miscItemPresets : (prev.miscItemPresets || []),
         }));
         setSaveSuccess('Settings saved successfully');
         setNewPassword('');
@@ -749,6 +752,40 @@ export default function AdminConsole({ onBack }) {
     setSettings(prev => ({ ...prev, commission: { ...prev.commission, [key]: isNaN(parsed) ? 0 : parsed } }));
   };
 
+  const addMiscPreset = () => {
+    setSettings(prev => ({
+      ...prev,
+      miscItemPresets: [
+        ...(prev.miscItemPresets || []),
+        { id: `misc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: '', description: '', defaultQuantity: 1, defaultUnitPrice: 0 },
+      ],
+    }));
+  };
+  const updateMiscPreset = (index, field, value) => {
+    setSettings(prev => {
+      const list = [...(prev.miscItemPresets || [])];
+      if (!list[index]) return prev;
+      let v = value;
+      if (field === 'defaultQuantity' || field === 'defaultUnitPrice') {
+        v = value === '' ? '' : (isNaN(parseFloat(value)) ? 0 : parseFloat(value));
+      }
+      list[index] = { ...list[index], [field]: v };
+      return { ...prev, miscItemPresets: list };
+    });
+  };
+  const removeMiscPreset = (index) => {
+    setSettings(prev => ({ ...prev, miscItemPresets: (prev.miscItemPresets || []).filter((_, i) => i !== index) }));
+  };
+  const moveMiscPreset = (index, direction) => {
+    setSettings(prev => {
+      const list = [...(prev.miscItemPresets || [])];
+      const target = index + direction;
+      if (target < 0 || target >= list.length) return prev;
+      [list[index], list[target]] = [list[target], list[index]];
+      return { ...prev, miscItemPresets: list };
+    });
+  };
+
   const updateJobberDesc = (key, value) => {
     setSettings(prev => ({ ...prev, jobberDescriptions: { ...prev.jobberDescriptions, [key]: value } }));
   };
@@ -793,6 +830,7 @@ export default function AdminConsole({ onBack }) {
     { id: 'labor', label: 'Labor' },
     { id: 'project', label: 'Project' },
     { id: 'commission', label: 'Commission' },
+    { id: 'miscPresets', label: 'Misc Item Presets' },
     { id: 'inventory', label: '🪣 Inventory' },
     { id: 'areaTypes', label: 'Area Types' },
     { id: 'jobberDesc', label: 'Jobber Descriptions' },
@@ -1018,6 +1056,99 @@ export default function AdminConsole({ onBack }) {
               {settings.commission.tier1Rate}% of net profit at {settings.commission.tier1Threshold}–{(settings.commission.tier2Threshold - 0.01).toFixed(2)}% margin, &nbsp;
               {settings.commission.tier2Rate}% at ≥{settings.commission.tier2Threshold}%. No commission below {settings.commission.tier1Threshold}%.
             </p>
+          </SectionCard>
+        )}
+
+        {/* Misc Item Presets */}
+        {activeSection === 'miscPresets' && (
+          <SectionCard title="Misc Item Presets">
+            <p className="text-sm text-gray-500 mb-4">
+              Reusable miscellaneous line items (equipment rental, dump fees, mobilization, etc.) that estimators can quickly insert into the Misc Line Items section. Reorder with the arrows; the order here is what users see in the picker.
+            </p>
+            {(!settings.miscItemPresets || settings.miscItemPresets.length === 0) ? (
+              <p className="text-sm text-gray-400 italic mb-4">No presets configured yet.</p>
+            ) : (
+              <div className="space-y-3 mb-4">
+                {settings.miscItemPresets.map((preset, index) => (
+                  <div key={preset.id || index} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-1 flex md:flex-col gap-1 md:gap-1 md:items-stretch">
+                        <button
+                          type="button"
+                          onClick={() => moveMiscPreset(index, -1)}
+                          disabled={index === 0}
+                          className="flex-1 text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                          title="Move up"
+                        >▲</button>
+                        <button
+                          type="button"
+                          onClick={() => moveMiscPreset(index, 1)}
+                          disabled={index === settings.miscItemPresets.length - 1}
+                          className="flex-1 text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                          title="Move down"
+                        >▼</button>
+                      </div>
+                      <div className="md:col-span-3">
+                        <label className={labelClass}>Name</label>
+                        <input
+                          type="text"
+                          value={preset.name || ''}
+                          onChange={(e) => updateMiscPreset(index, 'name', e.target.value)}
+                          placeholder="e.g. Equipment Rental Day Rate"
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="md:col-span-5">
+                        <label className={labelClass}>Description</label>
+                        <input
+                          type="text"
+                          value={preset.description || ''}
+                          onChange={(e) => updateMiscPreset(index, 'description', e.target.value)}
+                          placeholder="Optional details"
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="md:col-span-1">
+                        <label className={labelClass}>Qty</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={preset.defaultQuantity ?? ''}
+                          onChange={(e) => updateMiscPreset(index, 'defaultQuantity', e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="md:col-span-1">
+                        <label className={labelClass}>$/Unit</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={preset.defaultUnitPrice ?? ''}
+                          onChange={(e) => updateMiscPreset(index, 'defaultUnitPrice', e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="md:col-span-1 flex items-end">
+                        <button
+                          type="button"
+                          onClick={() => removeMiscPreset(index)}
+                          className="w-full text-xs text-red-600 hover:text-red-800 hover:bg-red-50 py-2 rounded border border-red-200"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={addMiscPreset}
+              className="mt-2 px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm hover:bg-blue-100 font-medium"
+            >
+              + Add Preset
+            </button>
+            <p className="text-xs text-gray-400 mt-3">Remember to click "Save Settings" at the top to persist changes.</p>
           </SectionCard>
         )}
 
