@@ -1321,7 +1321,7 @@ export default function AdminConsole({ onBack }) {
 
         {/* Jobber Descriptions */}
         {activeSection === 'jobberDesc' && (() => {
-          const SAMPLE = { thickness: '2', rvalue: '14.4', sqft: '1850', area: 'Main Floor', coatingType: 'Polyurea Top Coat' };
+          const SAMPLE = { thickness: '2', rvalue: '14.4', sqft: '1850', area: 'Main Floor', foamType: 'Enverge 2lb', coatingType: 'Polyurea Top Coat', areaType: 'Exterior Walls' };
           const applyTokens = (template, ctx = {}) => {
             if (!template) return '';
             let out = template
@@ -1329,9 +1329,9 @@ export default function AdminConsole({ onBack }) {
               .replace(/\{\{\s*rvalue\s*\}\}/gi, SAMPLE.rvalue)
               .replace(/\{\{\s*sqft\s*\}\}/gi, SAMPLE.sqft)
               .replace(/\{\{\s*area\s*\}\}/gi, SAMPLE.area)
-              .replace(/\{\{\s*foamType\s*\}\}/gi, ctx.foamTypeLabel || '')
+              .replace(/\{\{\s*foamType\s*\}\}/gi, ctx.foamTypeLabel || SAMPLE.foamType)
               .replace(/\{\{\s*coatingType\s*\}\}/gi, ctx.coatingTypeLabel || SAMPLE.coatingType)
-              .replace(/\{\{\s*areaType\s*\}\}/gi, ctx.areaTypeLabel || '');
+              .replace(/\{\{\s*areaType\s*\}\}/gi, ctx.areaTypeLabel || SAMPLE.areaType);
             if (!/\{\{\s*rvalue\s*\}\}/i.test(template)) {
               out += `\n[Resulting in an effective R-Value of ${SAMPLE.rvalue}]`;
             }
@@ -1342,7 +1342,7 @@ export default function AdminConsole({ onBack }) {
             if (!trimmed) return null;
             return (
               <div className="mt-1.5 text-xs">
-                <div className="text-gray-500 mb-0.5">Live preview (sample: 2" thick, R-14.4, 1,850 sq ft, "Main Floor"):</div>
+                <div className="text-gray-500 mb-0.5">Live preview (sample values used for any tokens not bound to this field — 2" thick, R-14.4, 1,850 sq ft, "Main Floor", "Enverge 2lb", "Polyurea Top Coat", "Exterior Walls"):</div>
                 <pre className="whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded p-2 text-gray-800 font-sans">{applyTokens(trimmed, { foamTypeLabel, coatingTypeLabel, areaTypeLabel })}</pre>
               </div>
             );
