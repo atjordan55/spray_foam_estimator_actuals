@@ -1329,7 +1329,18 @@ export default function AdminConsole({ onBack }) {
               </div>
             </SectionCard>
             <SectionCard title="Jobber Quote — Material Line Item Descriptions">
-              <p className="text-sm text-gray-500 mb-4">Set default descriptions for each area type and foam category combination sent to Jobber.</p>
+              <p className="text-sm text-gray-500 mb-2">Set default descriptions for each area type and foam category combination sent to Jobber.</p>
+              <div className="text-xs text-gray-600 bg-blue-50 border border-blue-200 rounded p-3 mb-4">
+                <p className="font-semibold mb-1">Dynamic tokens — paste these into any description and they'll be replaced with live estimate values when the quote is sent to Jobber:</p>
+                <ul className="list-disc ml-5 space-y-0.5">
+                  <li><code className="bg-white px-1 rounded">{'{{thickness}}'}</code> — foam thickness in inches (e.g. <code>2</code>)</li>
+                  <li><code className="bg-white px-1 rounded">{'{{rvalue}}'}</code> — calculated R-Value, 1 decimal (e.g. <code>14.4</code>). If used, the legacy "[Resulting in an effective R-Value of X]" line is <em>not</em> auto-appended.</li>
+                  <li><code className="bg-white px-1 rounded">{'{{sqft}}'}</code> — effective square footage for this area</li>
+                  <li><code className="bg-white px-1 rounded">{'{{area}}'}</code> — area name (e.g. <code>Main Floor</code>)</li>
+                  <li><code className="bg-white px-1 rounded">{'{{foamType}}'}</code> — foam product name (e.g. <code>Closed Cell 2.0</code>)</li>
+                </ul>
+                <p className="mt-2">Example: <code className="bg-white px-1 rounded">…applied at an average depth of {'{{thickness}}'} inches…</code> becomes <code className="bg-white px-1 rounded">…applied at an average depth of 2 inches…</code></p>
+              </div>
               {AREA_TYPES.map(areaType => (
                 <div key={areaType} className="mb-5">
                   <h4 className="text-sm font-semibold text-gray-700 mb-2">{areaType}</h4>

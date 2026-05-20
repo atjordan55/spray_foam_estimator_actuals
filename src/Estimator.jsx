@@ -1436,16 +1436,31 @@ export default function SprayFoamEstimator({ onAdmin }) {
       
       const lineItems = [];
       
-      const getLineItemDescription = (area, foamApp, rValue) => {
+      const getLineItemDescription = (area, foamApp, rValue, areaSqFt) => {
         const thickness = foamApp.foamThickness;
         const rValueFormatted = rValue.toFixed(1);
         const category = foamApp.foamTypeCategory || foamApp.foamType;
-        
+
+        // Token substitution for admin-configured descriptions.
+        // Supported tokens: {{thickness}} {{rvalue}} {{sqft}} {{area}} {{foamType}}
+        const applyTokens = (template) => template
+          .replace(/\{\{\s*thickness\s*\}\}/gi, String(thickness ?? ''))
+          .replace(/\{\{\s*rvalue\s*\}\}/gi, rValueFormatted)
+          .replace(/\{\{\s*sqft\s*\}\}/gi, areaSqFt != null ? String(Math.round(areaSqFt)) : '')
+          .replace(/\{\{\s*area\s*\}\}/gi, area.name || '')
+          .replace(/\{\{\s*foamType\s*\}\}/gi, foamApp.foamTypeName || category || '');
+
         // Check admin-configured Jobber descriptions first
         const descKey = `${area.areaType}-${category}`;
         const adminDesc = adminSettings?.jobberDescriptions?.[descKey];
         if (adminDesc) {
-          return `${adminDesc}\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+          const filled = applyTokens(adminDesc);
+          // If the template already includes an R-Value token, trust the author and
+          // don't auto-append the legacy "[Resulting in an effective R-Value...]" line.
+          if (/\{\{\s*rvalue\s*\}\}/i.test(adminDesc)) {
+            return filled;
+          }
+          return `${filled}\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
         }
         
         if (area.areaType === "Exterior Walls" && category === "Closed") {
@@ -1478,7 +1493,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
           }
           const calcs = calculateFoamApplicationCost(area, foamApp);
           const sqft = Math.round(calcs.sqft);
-          const description = getLineItemDescription(area, foamApp, calcs.rValue);
+          const description = getLineItemDescription(area, foamApp, calcs.rValue, areaSqFtForCalcs);
           const category = foamApp.foamTypeCategory || foamApp.foamType;
           const displayName = foamApp.foamTypeName || `${category} Cell`;
           
