@@ -1325,7 +1325,7 @@ export default function AdminConsole({ onBack }) {
           const SAMPLE = { thickness: '2', rvalue: '14.4', sqft: '1850', area: 'Main Floor', foamType: 'Enverge 2lb', coatingType: 'Polyurea Top Coat', areaType: 'Exterior Walls' };
           const applyTokens = (template, ctx = {}) => {
             if (!template) return '';
-            let out = template
+            return template
               .replace(/\{\{\s*thickness\s*\}\}/gi, SAMPLE.thickness)
               .replace(/\{\{\s*rvalue\s*\}\}/gi, SAMPLE.rvalue)
               .replace(/\{\{\s*sqft\s*\}\}/gi, SAMPLE.sqft)
@@ -1333,10 +1333,6 @@ export default function AdminConsole({ onBack }) {
               .replace(/\{\{\s*foamType\s*\}\}/gi, ctx.foamTypeLabel || SAMPLE.foamType)
               .replace(/\{\{\s*coatingType\s*\}\}/gi, ctx.coatingTypeLabel || SAMPLE.coatingType)
               .replace(/\{\{\s*areaType\s*\}\}/gi, ctx.areaTypeLabel || SAMPLE.areaType);
-            if (!/\{\{\s*rvalue\s*\}\}/i.test(template)) {
-              out += `\n[Resulting in an effective R-Value of ${SAMPLE.rvalue}]`;
-            }
-            return out;
           };
           const Preview = ({ template, foamTypeLabel, coatingTypeLabel, areaTypeLabel }) => {
             const trimmed = (template || '').trim();

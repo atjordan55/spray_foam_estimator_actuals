@@ -1456,26 +1456,20 @@ export default function SprayFoamEstimator({ onAdmin }) {
         const descKey = `${area.areaType}-${category}`;
         const adminDesc = adminSettings?.jobberDescriptions?.[descKey];
         if (adminDesc) {
-          const filled = applyTokens(adminDesc);
-          // If the template already includes an R-Value token, trust the author and
-          // don't auto-append the legacy "[Resulting in an effective R-Value...]" line.
-          if (/\{\{\s*rvalue\s*\}\}/i.test(adminDesc)) {
-            return filled;
-          }
-          return `${filled}\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+          return applyTokens(adminDesc);
         }
-        
+
         if (area.areaType === "Exterior Walls" && category === "Closed") {
-          return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high-performance thermal barrier, moisture seal, and structural enhancement. Includes sealing around all windows and doors as well as sealing bottom plates.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+          return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high-performance thermal barrier, moisture seal, and structural enhancement. Includes sealing around all windows and doors as well as sealing bottom plates.`;
         }
         if (area.areaType === "Exterior Walls" && category === "Open") {
-          return `Open-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high performance air seal, sound deadening, and high level thermal resistance. Includes sealing around all windows and doors as well as sealing bottom plates.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+          return `Open-cell spray foam insulation applied at an average depth of ${thickness} inches within exterior wall cavities, creating a high performance air seal, sound deadening, and high level thermal resistance. Includes sealing around all windows and doors as well as sealing bottom plates.`;
         }
         if (area.areaType === "Roof Deck" && category === "Closed") {
-          return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high-performance air seal, moisture barrier, and superior thermal resistance.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+          return `Closed-cell spray foam insulation applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high-performance air seal, moisture barrier, and superior thermal resistance.`;
         }
         if (area.areaType === "Roof Deck" && category === "Open") {
-          return `Open cell spray foam applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high performance air seal, sound deadening, and high level thermal resistance.\n[Resulting in an effective R-Value of ${rValueFormatted}]`;
+          return `Open cell spray foam applied at an average depth of ${thickness} inches to the underside of the roof deck, providing a high performance air seal, sound deadening, and high level thermal resistance.`;
         }
         return '';
       };
