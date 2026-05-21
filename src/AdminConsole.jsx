@@ -463,6 +463,16 @@ export default function AdminConsole({ onBack }) {
   const [activeSection, setActiveSection] = useState('company');
   const [selectedMaterialKey, setSelectedMaterialKey] = useState('');
 
+  // Clear selectedMaterialKey if its target foam/coating no longer exists
+  // (e.g. user deleted the product or reloaded settings).
+  useEffect(() => {
+    if (!selectedMaterialKey) return;
+    const [kind, id] = selectedMaterialKey.split(':');
+    const list = kind === 'foam' ? (settings.foamTypes || []) : kind === 'coating' ? (settings.coatingTypes || []) : [];
+    const exists = list.some(item => String(item.id) === id);
+    if (!exists) setSelectedMaterialKey('');
+  }, [selectedMaterialKey, settings.foamTypes, settings.coatingTypes]);
+
   const [settings, setSettings] = useState({
     companyName: '',
     foamTypes: [],

@@ -1493,7 +1493,14 @@ export default function SprayFoamEstimator({ onAdmin }) {
           if (foamApp.applicationType === "Coating") {
             const calcs = calculateCoatingApplicationCost(foamApp, areaSqFtForCalcs);
             const sqft = Math.round(areaSqFtForCalcs);
-            const pricePerSqFt = parseFloat(foamApp.defaultPricePerSqFt) || 0;
+            // Prefer the admin-set / estimator-shown defaultPricePerSqFt. If the estimate
+            // pre-dates this field (older saved coatings), derive an equivalent $/sqft
+            // from the calculated total so the Jobber line total still matches what the
+            // estimator shows on screen.
+            let pricePerSqFt = parseFloat(foamApp.defaultPricePerSqFt) || 0;
+            if (pricePerSqFt <= 0 && sqft > 0 && calcs.totalCost > 0) {
+              pricePerSqFt = Math.round((calcs.totalCost / sqft) * 1000) / 1000;
+            }
             const coatingId = foamApp.coatingTypeId;
             const nameKey = coatingId ? `material:coating:${coatingId}:name` : null;
             const descKey = coatingId ? `material:coating:${coatingId}:desc` : null;
