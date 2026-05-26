@@ -291,6 +291,19 @@ async function initDatabase() {
       WHERE source IN ('job_surplus','surplus_material') AND is_surplus = false
     `);
 
+    // Backfill A/B split for legacy foam rows that predate per-side tracking.
+    // Split the combined gallons 50/50; idempotent (only touches NULL rows).
+    // Sum-preserving: a = round(g/2,2), b = g - a (avoids 0.01 drift on odd gallons).
+    await pool.query(`
+      UPDATE material_inventory
+      SET a_side_gallons = ROUND((gallons / 2.0)::numeric, 2),
+          b_side_gallons = gallons - ROUND((gallons / 2.0)::numeric, 2)
+      WHERE material_category = 'foam'
+        AND a_side_gallons IS NULL
+        AND b_side_gallons IS NULL
+        AND gallons IS NOT NULL
+    `);
+
     // Skeleton tables for Phase B (reservations) and Phase C (signed estimates).
     // Created here so later phases don't need separate migrations.
     await pool.query(`
@@ -327,6 +340,12 @@ async function initDatabase() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_reservations_material ON inventory_reservations(material_type_id, status)`);
     // Phase B: record the actual gallons consumed when a reservation is reconciled.
     await pool.query(`ALTER TABLE inventory_reservations ADD COLUMN IF NOT EXISTS actual_gallons_used NUMERIC(10,2)`);
+    // Per-side reservations for foam products (A = ISO, B = Resin). Populated in PP2.
+    await pool.query(`
+      ALTER TABLE inventory_reservations
+        ADD COLUMN IF NOT EXISTS a_reserved NUMERIC(10,2) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS b_reserved NUMERIC(10,2) NOT NULL DEFAULT 0
+    `);
 
     console.log('Database initialized');
   } catch (err) {
@@ -889,6 +908,10 @@ app.get('/api/inventory/summary', async (req, res) => {
         SUM(CASE WHEN is_surplus THEN 0 ELSE gallons END) AS non_surplus_gallons,
         SUM(a_side_gallons) AS total_a_side,
         SUM(b_side_gallons) AS total_b_side,
+        SUM(CASE WHEN is_surplus THEN COALESCE(a_side_gallons, 0) ELSE 0 END) AS surplus_a_side,
+        SUM(CASE WHEN is_surplus THEN 0 ELSE COALESCE(a_side_gallons, 0) END) AS non_surplus_a_side,
+        SUM(CASE WHEN is_surplus THEN COALESCE(b_side_gallons, 0) ELSE 0 END) AS surplus_b_side,
+        SUM(CASE WHEN is_surplus THEN 0 ELSE COALESCE(b_side_gallons, 0) END) AS non_surplus_b_side,
         AVG(CASE WHEN gallons > 0 AND NOT is_surplus THEN cost_per_gallon END) AS avg_cost_per_gallon,
         (SELECT inventory_unit FROM material_inventory mi2
           WHERE mi2.material_type_id = mi.material_type_id
@@ -926,6 +949,10 @@ app.get('/api/inventory/summary', async (req, res) => {
     const summary = result.rows.map(r => {
       const total_a_side = r.total_a_side != null ? parseFloat(r.total_a_side) : null;
       const total_b_side = r.total_b_side != null ? parseFloat(r.total_b_side) : null;
+      const surplus_a_side = parseFloat(r.surplus_a_side) || 0;
+      const non_surplus_a_side = parseFloat(r.non_surplus_a_side) || 0;
+      const surplus_b_side = parseFloat(r.surplus_b_side) || 0;
+      const non_surplus_b_side = parseFloat(r.non_surplus_b_side) || 0;
       let is_balanced = false;
       if (total_a_side != null && total_b_side != null && total_a_side > 0 && total_b_side > 0) {
         const combined = total_a_side + total_b_side;
@@ -955,6 +982,10 @@ app.get('/api/inventory/summary', async (req, res) => {
         container_type: r.container_type || null,
         total_a_side,
         total_b_side,
+        surplus_a_side,
+        non_surplus_a_side,
+        surplus_b_side,
+        non_surplus_b_side,
         is_balanced,
       };
     });
@@ -988,8 +1019,33 @@ app.post('/api/inventory', async (req, res) => {
       drum_number = null,
       is_surplus = false,
     } = req.body || {};
-    if (!material_type_id || !material_type_name || gallons === undefined || gallons === null || gallons === '') {
-      return res.status(400).json({ error: 'material_type_id, material_type_name, and gallons are required' });
+    if (!material_type_id || !material_type_name) {
+      return res.status(400).json({ error: 'material_type_id and material_type_name are required' });
+    }
+    // Foam products require BOTH A-side and B-side gallons to be recorded
+    // (either side may be 0 when logging a standalone barrel purchase, but
+    // both values must be provided).
+    let finalGallons = gallons;
+    let finalASide = a_side_gallons;
+    let finalBSide = b_side_gallons;
+    if (material_category === 'foam') {
+      const aNum = a_side_gallons === '' || a_side_gallons === null || a_side_gallons === undefined
+        ? null : parseFloat(a_side_gallons);
+      const bNum = b_side_gallons === '' || b_side_gallons === null || b_side_gallons === undefined
+        ? null : parseFloat(b_side_gallons);
+      if (aNum === null || bNum === null || Number.isNaN(aNum) || Number.isNaN(bNum)) {
+        return res.status(400).json({ error: 'Foam entries require both a_side_gallons and b_side_gallons (use 0 for a side not purchased).' });
+      }
+      if (aNum === 0 && bNum === 0) {
+        return res.status(400).json({ error: 'At least one of a_side_gallons or b_side_gallons must be greater than 0.' });
+      }
+      finalASide = aNum;
+      finalBSide = bNum;
+      finalGallons = Math.round((aNum + bNum) * 100) / 100;
+    } else {
+      if (gallons === undefined || gallons === null || gallons === '') {
+        return res.status(400).json({ error: 'gallons is required for non-foam entries' });
+      }
     }
     // Surplus sources are always flagged is_surplus and have $0 cost basis
     // (cost was already recovered from the prior job that generated the surplus).
@@ -1008,10 +1064,10 @@ app.post('/api/inventory', async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       RETURNING *
     `, [
-      material_type_id, material_type_name, material_category, gallons, inventory_unit,
+      material_type_id, material_type_name, material_category, finalGallons, inventory_unit,
       container_type, container_equivalent, finalCost, source,
       committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes,
-      a_side_gallons, b_side_gallons, ratio_percent, batch_id, drum_number, finalIsSurplus
+      finalASide, finalBSide, ratio_percent, batch_id, drum_number, finalIsSurplus
     ]);
     res.json({ entry: result.rows[0] });
   } catch (err) {

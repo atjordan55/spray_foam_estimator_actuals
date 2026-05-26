@@ -503,6 +503,8 @@ export default function AdminConsole({ onBack }) {
     b_side_gallons: '',
     batch_id: '',
     drum_number: '',
+    complete_set: true,
+    set_gallons_per_side: '55',
   });
   const [inventoryMessage, setInventoryMessage] = useState('');
 
@@ -543,11 +545,48 @@ export default function AdminConsole({ onBack }) {
     const foam = (settings.foamTypes || []).find(f => (f.id || f.productName || f.name) === newInventory.material_type_id);
     const coating = !foam ? (settings.coatingTypes || []).find(c => (c.id || c.productName || c.name) === newInventory.material_type_id) : null;
     const material = foam || coating;
-    if (!material || !newInventory.gallons) {
-      setInventoryMessage('Select a material and enter gallons.');
+    if (!material) {
+      setInventoryMessage('Select a material.');
       return;
     }
     const isCoating = !!coating;
+
+    // Compute A/B and total gallons for foam from the complete-set toggle.
+    let aSide = null;
+    let bSide = null;
+    let totalGallons = null;
+    if (!isCoating) {
+      if (newInventory.complete_set) {
+        const perSide = parseFloat(newInventory.set_gallons_per_side);
+        if (Number.isNaN(perSide) || perSide <= 0) {
+          setInventoryMessage('Enter gallons per side for the complete set.');
+          return;
+        }
+        aSide = perSide;
+        bSide = perSide;
+      } else {
+        const aRaw = newInventory.a_side_gallons === '' ? 0 : parseFloat(newInventory.a_side_gallons);
+        const bRaw = newInventory.b_side_gallons === '' ? 0 : parseFloat(newInventory.b_side_gallons);
+        if (Number.isNaN(aRaw) || Number.isNaN(bRaw)) {
+          setInventoryMessage('A-side and B-side gallons must be numbers.');
+          return;
+        }
+        if (aRaw <= 0 && bRaw <= 0) {
+          setInventoryMessage('At least one of A-side or B-side gallons must be greater than 0.');
+          return;
+        }
+        aSide = aRaw;
+        bSide = bRaw;
+      }
+      totalGallons = Math.round((aSide + bSide) * 100) / 100;
+    } else {
+      if (!newInventory.gallons) {
+        setInventoryMessage('Enter gallons.');
+        return;
+      }
+      totalGallons = parseFloat(newInventory.gallons);
+    }
+
     try {
       const res = await fetch('/api/inventory', {
         method: 'POST',
@@ -556,7 +595,7 @@ export default function AdminConsole({ onBack }) {
           material_type_id: material.id || material.productName || material.name,
           material_type_name: material.productName || material.name,
           material_category: material.productCategory || (isCoating ? 'coating' : 'foam'),
-          gallons: parseFloat(newInventory.gallons),
+          gallons: totalGallons,
           inventory_unit: 'gallons',
           container_type: material.containerType || null,
           container_equivalent: isCoating ? (material.containerGallons ?? 5) : (material.usableGallonsPerSet ?? 100),
@@ -564,24 +603,29 @@ export default function AdminConsole({ onBack }) {
           source: newInventory.source,
           is_surplus: newInventory.source === 'surplus_material',
           notes: newInventory.notes || null,
-          a_side_gallons: !isCoating && newInventory.a_side_gallons !== '' ? parseFloat(newInventory.a_side_gallons) : null,
-          b_side_gallons: !isCoating && newInventory.b_side_gallons !== '' ? parseFloat(newInventory.b_side_gallons) : null,
-          ratio_percent: (!isCoating && newInventory.a_side_gallons !== '' && newInventory.b_side_gallons !== '' &&
-                          (parseFloat(newInventory.a_side_gallons) + parseFloat(newInventory.b_side_gallons)) > 0)
-            ? (parseFloat(newInventory.a_side_gallons) /
-               (parseFloat(newInventory.a_side_gallons) + parseFloat(newInventory.b_side_gallons))) * 200
+          a_side_gallons: !isCoating ? aSide : null,
+          b_side_gallons: !isCoating ? bSide : null,
+          ratio_percent: (!isCoating && (aSide + bSide) > 0)
+            ? (aSide / (aSide + bSide)) * 200
             : null,
           batch_id: !isCoating ? (newInventory.batch_id || null) : null,
           drum_number: !isCoating ? (newInventory.drum_number || null) : null,
         }),
       });
-      if (!res.ok) throw new Error('Failed');
-      setNewInventory({ material_type_id: '', gallons: '', cost_per_gallon: '', source: 'manual_addition', notes: '', a_side_gallons: '', b_side_gallons: '', batch_id: '', drum_number: '' });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || 'Failed');
+      }
+      setNewInventory({
+        material_type_id: '', gallons: '', cost_per_gallon: '', source: 'manual_addition', notes: '',
+        a_side_gallons: '', b_side_gallons: '', batch_id: '', drum_number: '',
+        complete_set: true, set_gallons_per_side: '55',
+      });
       setInventoryMessage('Inventory entry added.');
       await loadInventory();
       setTimeout(() => setInventoryMessage(''), 4000);
     } catch (err) {
-      setInventoryMessage('Failed to add entry.');
+      setInventoryMessage(err.message || 'Failed to add entry.');
     }
   };
 
@@ -1039,11 +1083,25 @@ export default function AdminConsole({ onBack }) {
                           Value at cost: ${valueAtCost.toFixed(2)} <span className="text-gray-400">(surplus = $0)</span>
                         </div>
                         {hasAB && (
-                          <div className="text-xs text-gray-600 mt-1 flex items-center gap-1.5">
-                            {bothSides && (
-                              <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`} title={dotTitle}></span>
-                            )}
-                            <span>A: {(item.total_a_side || 0).toFixed(1)} gal · B: {(item.total_b_side || 0).toFixed(1)} gal</span>
+                          <div className="text-xs text-gray-700 mt-2 pt-2 border-t border-gray-200">
+                            <div className="flex items-center gap-1.5 font-medium">
+                              {bothSides && (
+                                <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`} title={dotTitle}></span>
+                              )}
+                              <span>Per-side breakdown</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-3 mt-1">
+                              <div>
+                                <div className="text-gray-700"><span className="font-medium">A (ISO):</span> {(item.total_a_side || 0).toFixed(1)} gal</div>
+                                <div className="text-gray-500 pl-2">Non-Surplus: {(item.non_surplus_a_side || 0).toFixed(1)}</div>
+                                <div className="text-amber-700 pl-2">Surplus: {(item.surplus_a_side || 0).toFixed(1)}</div>
+                              </div>
+                              <div>
+                                <div className="text-gray-700"><span className="font-medium">B (Resin):</span> {(item.total_b_side || 0).toFixed(1)} gal</div>
+                                <div className="text-gray-500 pl-2">Non-Surplus: {(item.non_surplus_b_side || 0).toFixed(1)}</div>
+                                <div className="text-amber-700 pl-2">Surplus: {(item.surplus_b_side || 0).toFixed(1)}</div>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1104,15 +1162,23 @@ export default function AdminConsole({ onBack }) {
                     </p>
                   )}
                 </div>
-                <div>
-                  <label className={labelClass}>Gallons (use negative for deductions)</label>
-                  <input
-                    type="number" step="0.1"
-                    value={newInventory.gallons}
-                    onChange={(e) => setNewInventory(p => ({ ...p, gallons: e.target.value }))}
-                    className={inputClass}
-                  />
-                </div>
+                {(() => {
+                  const selFoam = (settings.foamTypes || []).find(f => (f.id || f.productName || f.name) === newInventory.material_type_id);
+                  const selCoat = !selFoam ? (settings.coatingTypes || []).find(c => (c.id || c.productName || c.name) === newInventory.material_type_id) : null;
+                  const showCoatingGallons = !!selCoat || (!selFoam && !selCoat);
+                  if (!showCoatingGallons) return null;
+                  return (
+                    <div>
+                      <label className={labelClass}>Gallons (use negative for deductions)</label>
+                      <input
+                        type="number" step="0.1"
+                        value={newInventory.gallons}
+                        onChange={(e) => setNewInventory(p => ({ ...p, gallons: e.target.value }))}
+                        className={inputClass}
+                      />
+                    </div>
+                  );
+                })()}
                 <div>
                   <label className={labelClass}>
                     Cost per Gallon ($)
@@ -1148,25 +1214,66 @@ export default function AdminConsole({ onBack }) {
                       </div>
                     );
                   }
+                  const aVal = newInventory.complete_set
+                    ? (parseFloat(newInventory.set_gallons_per_side) || 0)
+                    : (parseFloat(newInventory.a_side_gallons) || 0);
+                  const bVal = newInventory.complete_set
+                    ? (parseFloat(newInventory.set_gallons_per_side) || 0)
+                    : (parseFloat(newInventory.b_side_gallons) || 0);
+                  const setTotal = aVal + bVal;
                   return (
                     <>
-                      <div>
-                        <label className={labelClass}>A-side / ISO Gallons (optional)</label>
+                      <div className="sm:col-span-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
                         <input
-                          type="number" step="0.1"
-                          value={newInventory.a_side_gallons}
-                          onChange={(e) => setNewInventory(p => ({ ...p, a_side_gallons: e.target.value }))}
-                          className={inputClass}
+                          type="checkbox"
+                          id="completeSetCheckbox"
+                          checked={newInventory.complete_set}
+                          onChange={(e) => setNewInventory(p => ({ ...p, complete_set: e.target.checked }))}
+                          className="h-4 w-4"
                         />
+                        <label htmlFor="completeSetCheckbox" className="text-sm text-gray-700">
+                          <span className="font-medium">Complete Set</span>
+                          <span className="text-gray-500"> — balances A-side and B-side equally. Uncheck to enter A and B independently (e.g., standalone barrel purchase).</span>
+                        </label>
                       </div>
-                      <div>
-                        <label className={labelClass}>B-side / Resin Gallons (optional)</label>
-                        <input
-                          type="number" step="0.1"
-                          value={newInventory.b_side_gallons}
-                          onChange={(e) => setNewInventory(p => ({ ...p, b_side_gallons: e.target.value }))}
-                          className={inputClass}
-                        />
+                      {newInventory.complete_set ? (
+                        <div>
+                          <label className={labelClass}>Gallons per Side (A = B)</label>
+                          <input
+                            type="number" step="0.1" min="0"
+                            value={newInventory.set_gallons_per_side}
+                            onChange={(e) => setNewInventory(p => ({ ...p, set_gallons_per_side: e.target.value }))}
+                            className={inputClass}
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Standard barrel = 55 gal. A set = 55 A + 55 B = 110 total.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <label className={labelClass}>A-side / ISO Gallons (required)</label>
+                            <input
+                              type="number" step="0.1" min="0"
+                              value={newInventory.a_side_gallons}
+                              onChange={(e) => setNewInventory(p => ({ ...p, a_side_gallons: e.target.value }))}
+                              className={inputClass}
+                              placeholder="0"
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass}>B-side / Resin Gallons (required)</label>
+                            <input
+                              type="number" step="0.1" min="0"
+                              value={newInventory.b_side_gallons}
+                              onChange={(e) => setNewInventory(p => ({ ...p, b_side_gallons: e.target.value }))}
+                              className={inputClass}
+                              placeholder="0"
+                            />
+                          </div>
+                        </>
+                      )}
+                      <div className="sm:col-span-2 text-xs text-gray-600 -mt-1">
+                        Set total: <span className="font-medium">{setTotal.toFixed(1)} gal</span>
+                        {setTotal > 0 && <span className="text-gray-500"> (A: {aVal.toFixed(1)} · B: {bVal.toFixed(1)})</span>}
                       </div>
                       <div>
                         <label className={labelClass}>Batch ID (optional)</label>

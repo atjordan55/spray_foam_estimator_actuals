@@ -30,8 +30,32 @@ module.exports = async function handler(req, res) {
         drum_number = null,
         is_surplus = false,
       } = b;
-      if (!material_type_id || !material_type_name || gallons === undefined || gallons === null || gallons === '') {
-        return res.status(400).json({ error: 'material_type_id, material_type_name, and gallons are required' });
+      if (!material_type_id || !material_type_name) {
+        return res.status(400).json({ error: 'material_type_id and material_type_name are required' });
+      }
+      // Foam products require BOTH A-side and B-side gallons (either may be 0
+      // for a standalone barrel purchase, but both must be provided).
+      let finalGallons = gallons;
+      let finalASide = a_side_gallons;
+      let finalBSide = b_side_gallons;
+      if (material_category === 'foam') {
+        const aNum = a_side_gallons === '' || a_side_gallons === null || a_side_gallons === undefined
+          ? null : parseFloat(a_side_gallons);
+        const bNum = b_side_gallons === '' || b_side_gallons === null || b_side_gallons === undefined
+          ? null : parseFloat(b_side_gallons);
+        if (aNum === null || bNum === null || Number.isNaN(aNum) || Number.isNaN(bNum)) {
+          return res.status(400).json({ error: 'Foam entries require both a_side_gallons and b_side_gallons (use 0 for a side not purchased).' });
+        }
+        if (aNum === 0 && bNum === 0) {
+          return res.status(400).json({ error: 'At least one of a_side_gallons or b_side_gallons must be greater than 0.' });
+        }
+        finalASide = aNum;
+        finalBSide = bNum;
+        finalGallons = Math.round((aNum + bNum) * 100) / 100;
+      } else {
+        if (gallons === undefined || gallons === null || gallons === '') {
+          return res.status(400).json({ error: 'gallons is required for non-foam entries' });
+        }
       }
       let finalIsSurplus = !!is_surplus;
       let finalCost = cost_per_gallon;
@@ -45,10 +69,10 @@ module.exports = async function handler(req, res) {
            container_type, container_equivalent, cost_per_gallon, source,
            committed_at, committed_to_estimate, source_estimate_name, source_job_date, notes,
            a_side_gallons, b_side_gallons, ratio_percent, batch_id, drum_number, is_surplus)
-        VALUES (${material_type_id}, ${material_type_name}, ${material_category}, ${gallons}, ${inventory_unit},
+        VALUES (${material_type_id}, ${material_type_name}, ${material_category}, ${finalGallons}, ${inventory_unit},
                 ${container_type}, ${container_equivalent}, ${finalCost}, ${source},
                 ${committed_at}, ${committed_to_estimate}, ${source_estimate_name}, ${source_job_date}, ${notes},
-                ${a_side_gallons}, ${b_side_gallons}, ${ratio_percent}, ${batch_id}, ${drum_number}, ${finalIsSurplus})
+                ${finalASide}, ${finalBSide}, ${ratio_percent}, ${batch_id}, ${drum_number}, ${finalIsSurplus})
         RETURNING *
       `;
       return res.json({ entry: rows[0] });

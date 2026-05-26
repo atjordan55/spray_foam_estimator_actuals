@@ -14,6 +14,10 @@ module.exports = async function handler(req, res) {
         SUM(CASE WHEN is_surplus THEN 0 ELSE gallons END) AS non_surplus_gallons,
         SUM(a_side_gallons) AS total_a_side,
         SUM(b_side_gallons) AS total_b_side,
+        SUM(CASE WHEN is_surplus THEN COALESCE(a_side_gallons, 0) ELSE 0 END) AS surplus_a_side,
+        SUM(CASE WHEN is_surplus THEN 0 ELSE COALESCE(a_side_gallons, 0) END) AS non_surplus_a_side,
+        SUM(CASE WHEN is_surplus THEN COALESCE(b_side_gallons, 0) ELSE 0 END) AS surplus_b_side,
+        SUM(CASE WHEN is_surplus THEN 0 ELSE COALESCE(b_side_gallons, 0) END) AS non_surplus_b_side,
         AVG(CASE WHEN gallons > 0 AND NOT is_surplus THEN cost_per_gallon END) AS avg_cost_per_gallon,
         (SELECT inventory_unit FROM material_inventory mi2
           WHERE mi2.material_type_id = mi.material_type_id
@@ -48,6 +52,10 @@ module.exports = async function handler(req, res) {
     const summary = rows.map(r => {
       const total_a_side = r.total_a_side != null ? parseFloat(r.total_a_side) : null;
       const total_b_side = r.total_b_side != null ? parseFloat(r.total_b_side) : null;
+      const surplus_a_side = parseFloat(r.surplus_a_side) || 0;
+      const non_surplus_a_side = parseFloat(r.non_surplus_a_side) || 0;
+      const surplus_b_side = parseFloat(r.surplus_b_side) || 0;
+      const non_surplus_b_side = parseFloat(r.non_surplus_b_side) || 0;
       let is_balanced = false;
       if (total_a_side != null && total_b_side != null && total_a_side > 0 && total_b_side > 0) {
         const combined = total_a_side + total_b_side;
@@ -75,6 +83,10 @@ module.exports = async function handler(req, res) {
         container_type: r.container_type || null,
         total_a_side,
         total_b_side,
+        surplus_a_side,
+        non_surplus_a_side,
+        surplus_b_side,
+        non_surplus_b_side,
         is_balanced,
       };
     });

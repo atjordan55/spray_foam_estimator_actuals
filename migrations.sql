@@ -117,6 +117,17 @@ UPDATE material_inventory
 SET is_surplus = true
 WHERE source IN ('job_surplus','surplus_material') AND is_surplus = false;
 
+-- Backfill A/B split for legacy foam rows that predate per-side tracking.
+-- Split 50/50, sum-preserving (b = gallons - a) so a+b == gallons exactly.
+-- Idempotent: only touches rows where both sides are still NULL.
+UPDATE material_inventory
+SET a_side_gallons = ROUND((gallons / 2.0)::numeric, 2),
+    b_side_gallons = gallons - ROUND((gallons / 2.0)::numeric, 2)
+WHERE material_category = 'foam'
+  AND a_side_gallons IS NULL
+  AND b_side_gallons IS NULL
+  AND gallons IS NOT NULL;
+
 -- ---------------------------------------------------------------------
 -- 4. estimates  (NEW — one row per estimate; carries signed/reconciled state)
 -- ---------------------------------------------------------------------
@@ -155,6 +166,11 @@ CREATE TABLE IF NOT EXISTS inventory_reservations (
 
 ALTER TABLE inventory_reservations
   ADD COLUMN IF NOT EXISTS actual_gallons_used NUMERIC(10,2);
+
+-- Per-side reservations for foam products (populated by estimator in PP2).
+ALTER TABLE inventory_reservations
+  ADD COLUMN IF NOT EXISTS a_reserved NUMERIC(10,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS b_reserved NUMERIC(10,2) NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_reservations_estimate
   ON inventory_reservations(estimate_id);
