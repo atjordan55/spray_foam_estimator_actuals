@@ -108,7 +108,7 @@ const createCoatingApplication = (coatingTypeObj = null) => {
     maxSinglePassWetMils: ct.maxSinglePassWetMils ?? 0,
     solidsByVolumePercent: ct.solidsByVolumePercent ?? 0,
     pricePerContainer: ct.defaultPricePerContainer ?? 0,
-    defaultPricePerSqFt: ct.defaultPricePerSqFt ?? 0,
+    defaultPricePerSqFt: Math.round(((ct.defaultPricePerSqFt ?? 0)) * 100) / 100,
   };
 };
 
@@ -1045,7 +1045,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
         coatingApp.pricePerContainer = ct.defaultPricePerContainer ?? coatingApp.pricePerContainer;
         // Reconcile $/Sq Ft from markup % + base cost so the two stay in sync
         const baseCostPerSqFt = computeCoatingBaseCostPerSqFt(coatingApp, area);
-        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + (parseFloat(coatingApp.materialMarkup) || 0) / 100) * 1000) / 1000;
+        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + (parseFloat(coatingApp.materialMarkup) || 0) / 100) * 100) / 100;
       }
     } else if (key === "materialMarkup" || key === "defaultPricePerSqFt") {
       const parsed = parseFloat(value);
@@ -1053,9 +1053,9 @@ export default function SprayFoamEstimator({ onAdmin }) {
       const baseCostPerSqFt = computeCoatingBaseCostPerSqFt(coatingApp, area);
       if (key === "materialMarkup") {
         coatingApp.materialMarkup = newVal;
-        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + newVal / 100) * 1000) / 1000;
+        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + newVal / 100) * 100) / 100;
       } else {
-        coatingApp.defaultPricePerSqFt = newVal;
+        coatingApp.defaultPricePerSqFt = Math.round(newVal * 100) / 100;
         coatingApp.materialMarkup = baseCostPerSqFt > 0
           ? Math.max(0, Math.round(((newVal / baseCostPerSqFt) - 1) * 100 * 100) / 100)
           : 0;
@@ -1066,7 +1066,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
       // If a parameter that affects baseCostPerSqFt changes, keep $/Sq Ft locked to current markup
       if (["materialCostPerContainer", "containerGallons", "usableGallonsPerSet", "defaultThickness", "sqFtPerGallon"].includes(key)) {
         const baseCostPerSqFt = computeCoatingBaseCostPerSqFt(coatingApp, area);
-        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + (parseFloat(coatingApp.materialMarkup) || 0) / 100) * 1000) / 1000;
+        coatingApp.defaultPricePerSqFt = Math.round(baseCostPerSqFt * (1 + (parseFloat(coatingApp.materialMarkup) || 0) / 100) * 100) / 100;
       }
     }
     setSprayAreas(updated);
@@ -1499,7 +1499,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
             // estimator shows on screen.
             let pricePerSqFt = parseFloat(foamApp.defaultPricePerSqFt) || 0;
             if (pricePerSqFt <= 0 && sqft > 0 && calcs.totalCost > 0) {
-              pricePerSqFt = Math.round((calcs.totalCost / sqft) * 1000) / 1000;
+              pricePerSqFt = Math.round((calcs.totalCost / sqft) * 100) / 100;
             }
             const coatingId = foamApp.coatingTypeId;
             const nameKey = coatingId ? `material:coating:${coatingId}:name` : null;
@@ -2734,9 +2734,9 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                         return (
                                           <>
                                             <input
-                                              type="number" step="0.001" min="0"
+                                              type="number" step="0.01" min="0"
                                               value={creditApplied
-                                                ? (displayedPricePerSqFt > 0 ? displayedPricePerSqFt.toFixed(3) : "")
+                                                ? (displayedPricePerSqFt > 0 ? displayedPricePerSqFt.toFixed(2) : "")
                                                 : (foamApp.defaultPricePerSqFt || "")}
                                               onChange={(e) => updateCoatingApplication(areaIndex, foamIndex, 'defaultPricePerSqFt', e.target.value)}
                                               readOnly={creditApplied}

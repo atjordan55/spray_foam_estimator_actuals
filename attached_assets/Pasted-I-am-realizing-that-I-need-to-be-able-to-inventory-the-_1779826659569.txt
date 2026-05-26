@@ -1,0 +1,13 @@
+I am realizing that I need to be able to inventory the Foam Type products (A-side (Iso)) and (B-side (resin)) separately. The A-side and B-side each arrive in its own 55 gallon barrel. Even though they are typically purchased together in a set, there are times when we may need to purchase one separately. Sometimes a job can utilize more A-side than B-side due to extreme weather conditions or at times we purposely combine a small portion of different ISOs to achieve specific foam properties.  
+
+Since the open and closed cell foam is typically purchased in sets the cost of the A and B side is usually split between the cost of the set itself. So if a set of Enverge 2lb closed cell costs 2300 the assumed cost of the A side is 1150 and the cost of the B side is 1150. That potential ambiguity can be alleviated by how the A and B sides are entered into the inventory individually if necessary 
+
+*The inventory can still be added via a single product (ie Enverge 2lb)
+*Entering the A-side / ISO Gallons cannot be optional and must be recorded
+*Entering the B-side / Resin Gallons cannot be optional and must be recorded
+*The inventory already makes a distinction between Surplus and Non-Surplus
+*There also needs to be a distinction between the available amount of A side and B side of any spray foam specific product (Surplus and Non-Surplus)
+
+When we create an estimate using a closed-cell Foam Type (R-Value Category - Closed Cell (R-7.2/in) we should go with the assumption that we will use a balanced ratio of the selected Foam Type (A+B) material. But we need to be able to true up the percentage of the types of ISO materials used in the actuals. The actuals should provide the ability to reference any additional ISO materials used and the percentage used of each. Based off of the percentage given the inventory should update based on that (ie. ISO actuals is 100 gallons - Enverge 2lb ISO 80% / Enverge .5lb ISO 20% - 80 gallons of Enverge 2lb ISO used / 20 gallons of Enverge .5lb used). Continue to provide the ability to capture both the ISO and the Resin for the Foam Type products referenced in the estimate, but the entries must be mandatory now in order confirm that the actuals are correct.
+
+Please ask any questions for verification and/or provide a synopsis to ensure we are on the same page prior to initiating any changes. 
