@@ -360,7 +360,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
         if (app.applicationType !== 'Coating' && app.foamTypeId) estimateFoamTypeIds.add(app.foamTypeId);
       }));
       const estimateHasSingleFoamType = estimateFoamTypeIds.size === 1;
-      for (const item of surplusItems) {
+      const rows = surplusItems.map(item => {
         // Prefer per-foam-type A/B; fall back to legacy single-value fields only if the estimate has just one foam type.
         let iso = null, resin = null;
         const perType = abByType[item.foamTypeId];
@@ -373,25 +373,31 @@ export default function SprayFoamEstimator({ onAdmin }) {
         }
         const hasABData = iso != null && resin != null && (iso + resin) > 0;
         const ratio = hasABData ? (iso / (iso + resin)) * 200 : null;
-        await fetch('/api/inventory', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            material_type_id: item.foamTypeId,
-            material_type_name: item.foamTypeName,
-            material_category: 'foam',
-            gallons: item.surplusGallons,
-            inventory_unit: 'gallons',
-            cost_per_gallon: item.costPerGallon,
-            source: 'job_surplus',
-            source_estimate_name: estimateName || '',
-            source_job_date: completionDate || engagementDate || '',
-            notes: `Estimated ${item.estimatedGallons.toFixed(1)} gal, used ${item.actualGallons.toFixed(1)} gal`,
-            a_side_gallons: hasABData ? iso : null,
-            b_side_gallons: hasABData ? resin : null,
-            ratio_percent: ratio,
-          }),
-        });
+        return {
+          material_type_id: item.foamTypeId,
+          material_type_name: item.foamTypeName,
+          material_category: 'foam',
+          gallons: item.surplusGallons,
+          inventory_unit: 'gallons',
+          cost_per_gallon: item.costPerGallon,
+          source: 'job_surplus',
+          source_estimate_name: estimateName || '',
+          source_job_date: completionDate || engagementDate || '',
+          notes: `Estimated ${item.estimatedGallons.toFixed(1)} gal, used ${item.actualGallons.toFixed(1)} gal`,
+          a_side_gallons: hasABData ? iso : null,
+          b_side_gallons: hasABData ? resin : null,
+          ratio_percent: ratio,
+        };
+      });
+      // Use the batch endpoint so all surplus rows commit atomically.
+      const res = await fetch('/api/inventory/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || 'Failed to add surplus to inventory.');
       }
       await loadInventorySummary();
       setSurplusSuccess(`Added ${surplusItems.length} surplus entry${surplusItems.length === 1 ? '' : 'ies'} to inventory.`);

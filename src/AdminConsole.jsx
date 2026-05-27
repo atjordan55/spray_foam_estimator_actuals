@@ -495,16 +495,22 @@ export default function AdminConsole({ onBack }) {
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [newInventory, setNewInventory] = useState({
     material_type_id: '',
-    gallons: '',
-    cost_per_gallon: '',
     source: 'manual_addition',
     notes: '',
-    a_side_gallons: '',
-    b_side_gallons: '',
-    batch_id: '',
-    drum_number: '',
+    // Foam fields
     complete_set: true,
     set_gallons_per_side: '55',
+    cost_per_set: '',
+    a_side_gallons: '',
+    b_side_gallons: '',
+    cost_per_barrel_a: '',
+    cost_per_barrel_b: '',
+    batch_id: '',
+    drum_number: '',
+    // Coating fields
+    coating_gallons: '',
+    coating_container_size: '5',
+    cost_per_container: '',
   });
   const [inventoryMessage, setInventoryMessage] = useState('');
 
@@ -550,78 +556,154 @@ export default function AdminConsole({ onBack }) {
       return;
     }
     const isCoating = !!coating;
+    const isSurplus = newInventory.source === 'surplus_material';
 
-    // Compute A/B and total gallons for foam from the complete-set toggle.
-    let aSide = null;
-    let bSide = null;
-    let totalGallons = null;
-    if (!isCoating) {
-      if (newInventory.complete_set) {
-        const perSide = parseFloat(newInventory.set_gallons_per_side);
-        if (Number.isNaN(perSide) || perSide <= 0) {
-          setInventoryMessage('Enter gallons per side for the complete set.');
+    // Build one POST body per inventory row to insert.
+    const rowsToPost = [];
+    const baseRow = {
+      material_type_id: material.id || material.productName || material.name,
+      material_type_name: material.productName || material.name,
+      material_category: material.productCategory || (isCoating ? 'coating' : 'foam'),
+      inventory_unit: 'gallons',
+      source: newInventory.source,
+      is_surplus: isSurplus,
+    };
+
+    if (isCoating) {
+      const gallons = newInventory.coating_gallons === '' ? NaN : parseFloat(newInventory.coating_gallons);
+      if (Number.isNaN(gallons) || gallons === 0) {
+        setInventoryMessage('Enter a non-zero gallons amount (use negative for deductions).');
+        return;
+      }
+      const containerSize = parseFloat(newInventory.coating_container_size) || 5;
+      const isDeduction = gallons < 0 || isSurplus;
+      let costPerGallon = 0;
+      let containerNote = null;
+      if (!isDeduction) {
+        const containerCost = parseFloat(newInventory.cost_per_container);
+        if (Number.isNaN(containerCost) || containerCost < 0) {
+          setInventoryMessage('Enter the cost per container.');
           return;
         }
-        aSide = perSide;
-        bSide = perSide;
+        costPerGallon = Math.round((containerCost / containerSize) * 10000) / 10000;
+        containerNote = `Bought as: $${containerCost.toFixed(2)} per ${containerSize}-gal container`;
+      }
+      const containerTypeBySize = { 1: '1gal_bucket', 5: '5gal_pail', 55: '55gal_barrel' };
+      rowsToPost.push({
+        ...baseRow,
+        gallons,
+        container_type: containerTypeBySize[containerSize] || `${containerSize}gal_container`,
+        container_equivalent: containerSize,
+        cost_per_gallon: costPerGallon,
+        notes: [newInventory.notes, containerNote].filter(Boolean).join(' | ') || null,
+      });
+    } else {
+      // Foam path
+      if (newInventory.complete_set) {
+        const perSide = parseFloat(newInventory.set_gallons_per_side);
+        if (Number.isNaN(perSide) || perSide === 0) {
+          setInventoryMessage('Enter a non-zero gallons-per-side for the complete set.');
+          return;
+        }
+        const totalGallons = Math.round((perSide * 2) * 100) / 100;
+        const isDeduction = perSide < 0 || isSurplus;
+        let costPerGallon = 0;
+        let containerNote = null;
+        if (!isDeduction) {
+          const setCost = parseFloat(newInventory.cost_per_set);
+          if (Number.isNaN(setCost) || setCost < 0) {
+            setInventoryMessage('Enter the cost per complete set.');
+            return;
+          }
+          costPerGallon = Math.round((setCost / (perSide * 2)) * 10000) / 10000;
+          containerNote = `Bought as: $${setCost.toFixed(2)} per complete set (${perSide * 2} gal)`;
+        }
+        rowsToPost.push({
+          ...baseRow,
+          gallons: totalGallons,
+          a_side_gallons: perSide,
+          b_side_gallons: perSide,
+          container_type: '110gal_set',
+          container_equivalent: perSide * 2,
+          cost_per_gallon: costPerGallon,
+          batch_id: newInventory.batch_id || null,
+          drum_number: newInventory.drum_number || null,
+          notes: [newInventory.notes, containerNote].filter(Boolean).join(' | ') || null,
+        });
       } else {
+        // Standalone barrels: one row per non-zero side, each with its own price.
         const aRaw = newInventory.a_side_gallons === '' ? 0 : parseFloat(newInventory.a_side_gallons);
         const bRaw = newInventory.b_side_gallons === '' ? 0 : parseFloat(newInventory.b_side_gallons);
         if (Number.isNaN(aRaw) || Number.isNaN(bRaw)) {
           setInventoryMessage('A-side and B-side gallons must be numbers.');
           return;
         }
-        if (aRaw <= 0 && bRaw <= 0) {
-          setInventoryMessage('At least one of A-side or B-side gallons must be greater than 0.');
+        if (aRaw === 0 && bRaw === 0) {
+          setInventoryMessage('At least one of A-side or B-side must be non-zero (negative allowed for deductions).');
           return;
         }
-        aSide = aRaw;
-        bSide = bRaw;
+        const buildSide = (sideLabel, gallonsVal, barrelCostRaw) => {
+          const isDeduction = gallonsVal < 0 || isSurplus;
+          let costPerGallon = 0;
+          let containerNote = null;
+          if (!isDeduction) {
+            const barrelCost = parseFloat(barrelCostRaw);
+            if (Number.isNaN(barrelCost) || barrelCost < 0) {
+              return { error: `Enter the ${sideLabel}-side cost per 55-gal barrel.` };
+            }
+            costPerGallon = Math.round((barrelCost / 55) * 10000) / 10000;
+            containerNote = `Bought as: $${barrelCost.toFixed(2)} per 55-gal ${sideLabel}-side barrel`;
+          }
+          return {
+            row: {
+              ...baseRow,
+              gallons: gallonsVal,
+              a_side_gallons: sideLabel === 'A' ? gallonsVal : 0,
+              b_side_gallons: sideLabel === 'B' ? gallonsVal : 0,
+              container_type: '55gal_barrel',
+              container_equivalent: 55,
+              cost_per_gallon: costPerGallon,
+              batch_id: newInventory.batch_id || null,
+              drum_number: newInventory.drum_number || null,
+              notes: [newInventory.notes, containerNote].filter(Boolean).join(' | ') || null,
+            },
+          };
+        };
+        if (aRaw !== 0) {
+          const built = buildSide('A', aRaw, newInventory.cost_per_barrel_a);
+          if (built.error) { setInventoryMessage(built.error); return; }
+          rowsToPost.push(built.row);
+        }
+        if (bRaw !== 0) {
+          const built = buildSide('B', bRaw, newInventory.cost_per_barrel_b);
+          if (built.error) { setInventoryMessage(built.error); return; }
+          rowsToPost.push(built.row);
+        }
       }
-      totalGallons = Math.round((aSide + bSide) * 100) / 100;
-    } else {
-      if (!newInventory.gallons) {
-        setInventoryMessage('Enter gallons.');
-        return;
-      }
-      totalGallons = parseFloat(newInventory.gallons);
     }
 
     try {
-      const res = await fetch('/api/inventory', {
+      // Use the batch endpoint so multi-side foam purchases are inserted
+      // atomically (all rows commit, or none — no partial-write exposure).
+      const res = await fetch('/api/inventory/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          material_type_id: material.id || material.productName || material.name,
-          material_type_name: material.productName || material.name,
-          material_category: material.productCategory || (isCoating ? 'coating' : 'foam'),
-          gallons: totalGallons,
-          inventory_unit: 'gallons',
-          container_type: material.containerType || null,
-          container_equivalent: isCoating ? (material.containerGallons ?? 5) : (material.usableGallonsPerSet ?? 100),
-          cost_per_gallon: newInventory.source === 'surplus_material' ? 0 : (parseFloat(newInventory.cost_per_gallon) || 0),
-          source: newInventory.source,
-          is_surplus: newInventory.source === 'surplus_material',
-          notes: newInventory.notes || null,
-          a_side_gallons: !isCoating ? aSide : null,
-          b_side_gallons: !isCoating ? bSide : null,
-          ratio_percent: (!isCoating && (aSide + bSide) > 0)
-            ? (aSide / (aSide + bSide)) * 200
-            : null,
-          batch_id: !isCoating ? (newInventory.batch_id || null) : null,
-          drum_number: !isCoating ? (newInventory.drum_number || null) : null,
-        }),
+        body: JSON.stringify({ rows: rowsToPost }),
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.error || 'Failed');
       }
       setNewInventory({
-        material_type_id: '', gallons: '', cost_per_gallon: '', source: 'manual_addition', notes: '',
-        a_side_gallons: '', b_side_gallons: '', batch_id: '', drum_number: '',
-        complete_set: true, set_gallons_per_side: '55',
+        material_type_id: '', source: 'manual_addition', notes: '',
+        complete_set: true, set_gallons_per_side: '55', cost_per_set: '',
+        a_side_gallons: '', b_side_gallons: '', cost_per_barrel_a: '', cost_per_barrel_b: '',
+        batch_id: '', drum_number: '',
+        coating_gallons: '', coating_container_size: '5', cost_per_container: '',
       });
-      setInventoryMessage('Inventory entry added.');
+      setInventoryMessage(rowsToPost.length > 1
+        ? `Added ${rowsToPost.length} inventory entries (one per side).`
+        : 'Inventory entry added.');
       await loadInventory();
       setTimeout(() => setInventoryMessage(''), 4000);
     } catch (err) {
@@ -1139,15 +1221,7 @@ export default function AdminConsole({ onBack }) {
                   <label className={labelClass}>Source</label>
                   <select
                     value={newInventory.source}
-                    onChange={(e) => {
-                      const src = e.target.value;
-                      setNewInventory(p => ({
-                        ...p,
-                        source: src,
-                        // Surplus = already paid for by a prior job, so cost basis is $0.
-                        cost_per_gallon: src === 'surplus_material' ? '0' : p.cost_per_gallon,
-                      }));
-                    }}
+                    onChange={(e) => setNewInventory(p => ({ ...p, source: e.target.value }))}
                     className={inputClass}
                   >
                     <option value="manual_addition">Manual Addition</option>
@@ -1165,35 +1239,69 @@ export default function AdminConsole({ onBack }) {
                 {(() => {
                   const selFoam = (settings.foamTypes || []).find(f => (f.id || f.productName || f.name) === newInventory.material_type_id);
                   const selCoat = !selFoam ? (settings.coatingTypes || []).find(c => (c.id || c.productName || c.name) === newInventory.material_type_id) : null;
-                  const showCoatingGallons = !!selCoat || (!selFoam && !selCoat);
-                  if (!showCoatingGallons) return null;
+                  const showCoatingFields = !!selCoat || (!selFoam && !selCoat);
+                  if (!showCoatingFields) return null;
+                  const isSurplus = newInventory.source === 'surplus_material';
+                  const gNum = newInventory.coating_gallons === '' ? NaN : parseFloat(newInventory.coating_gallons);
+                  const isDeduction = !Number.isNaN(gNum) && gNum < 0;
+                  const containerSize = parseFloat(newInventory.coating_container_size) || 5;
+                  const containerCost = parseFloat(newInventory.cost_per_container);
+                  const derivedPerGal = !Number.isNaN(containerCost) && containerSize > 0
+                    ? containerCost / containerSize : null;
                   return (
-                    <div>
-                      <label className={labelClass}>Gallons (use negative for deductions)</label>
-                      <input
-                        type="number" step="0.1"
-                        value={newInventory.gallons}
-                        onChange={(e) => setNewInventory(p => ({ ...p, gallons: e.target.value }))}
-                        className={inputClass}
-                      />
-                    </div>
+                    <>
+                      <div>
+                        <label className={labelClass}>Container Size</label>
+                        <select
+                          value={newInventory.coating_container_size}
+                          onChange={(e) => setNewInventory(p => ({ ...p, coating_container_size: e.target.value }))}
+                          className={inputClass}
+                          disabled={isDeduction || isSurplus}
+                        >
+                          <option value="1">1 gal bucket</option>
+                          <option value="5">5 gal pail</option>
+                          <option value="55">55 gal barrel</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelClass}>Gallons <span className="text-gray-400 font-normal">(negative = deduction)</span></label>
+                        <input
+                          type="number" step="0.1"
+                          value={newInventory.coating_gallons}
+                          onChange={(e) => setNewInventory(p => ({ ...p, coating_gallons: e.target.value }))}
+                          className={inputClass}
+                        />
+                      </div>
+                      {(isDeduction || isSurplus) ? (
+                        <div className="sm:col-span-2 text-xs px-2 py-1.5 bg-amber-50 border border-amber-200 rounded text-amber-800">
+                          {isSurplus
+                            ? 'Surplus material — cost basis locked at $0 (already paid for by a prior job).'
+                            : 'Deduction — cost basis $0 (write-off / count correction).'}
+                        </div>
+                      ) : (
+                        <div className="sm:col-span-2 grid grid-cols-2 gap-3">
+                          <div>
+                            <label className={labelClass}>Cost per Container ($)</label>
+                            <input
+                              type="number" step="0.01" min="0"
+                              value={newInventory.cost_per_container}
+                              onChange={(e) => setNewInventory(p => ({ ...p, cost_per_container: e.target.value }))}
+                              className={inputClass}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div className="flex items-end">
+                            <div className="text-xs text-gray-600 pb-2">
+                              {derivedPerGal != null
+                                ? <>= <span className="font-medium text-gray-800">${derivedPerGal.toFixed(2)}/gal</span></>
+                                : <span className="text-gray-400">Enter container cost to see $/gal</span>}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
-                <div>
-                  <label className={labelClass}>
-                    Cost per Gallon ($)
-                    {newInventory.source === 'surplus_material' && (
-                      <span className="ml-1 text-gray-400">(locked at $0 for surplus)</span>
-                    )}
-                  </label>
-                  <input
-                    type="number" step="0.01"
-                    value={newInventory.source === 'surplus_material' ? '0' : newInventory.cost_per_gallon}
-                    disabled={newInventory.source === 'surplus_material'}
-                    onChange={(e) => setNewInventory(p => ({ ...p, cost_per_gallon: e.target.value }))}
-                    className={`${inputClass} ${newInventory.source === 'surplus_material' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                  />
-                </div>
                 <div className="sm:col-span-2">
                   <label className={labelClass}>Notes</label>
                   <input
@@ -1221,6 +1329,7 @@ export default function AdminConsole({ onBack }) {
                     ? (parseFloat(newInventory.set_gallons_per_side) || 0)
                     : (parseFloat(newInventory.b_side_gallons) || 0);
                   const setTotal = aVal + bVal;
+                  const totalAbs = Math.abs(setTotal);
                   return (
                     <>
                       <div className="sm:col-span-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
@@ -1236,44 +1345,105 @@ export default function AdminConsole({ onBack }) {
                           <span className="text-gray-500"> — balances A-side and B-side equally. Uncheck to enter A and B independently (e.g., standalone barrel purchase).</span>
                         </label>
                       </div>
-                      {newInventory.complete_set ? (
-                        <div>
-                          <label className={labelClass}>Gallons per Side (A = B)</label>
-                          <input
-                            type="number" step="0.1" min="0"
-                            value={newInventory.set_gallons_per_side}
-                            onChange={(e) => setNewInventory(p => ({ ...p, set_gallons_per_side: e.target.value }))}
-                            className={inputClass}
-                          />
-                          <p className="text-xs text-gray-500 mt-1">Standard barrel = 55 gal. A set = 55 A + 55 B = 110 total.</p>
-                        </div>
-                      ) : (
-                        <>
-                          <div>
-                            <label className={labelClass}>A-side / ISO Gallons (required)</label>
-                            <input
-                              type="number" step="0.1" min="0"
-                              value={newInventory.a_side_gallons}
-                              onChange={(e) => setNewInventory(p => ({ ...p, a_side_gallons: e.target.value }))}
-                              className={inputClass}
-                              placeholder="0"
-                            />
-                          </div>
-                          <div>
-                            <label className={labelClass}>B-side / Resin Gallons (required)</label>
-                            <input
-                              type="number" step="0.1" min="0"
-                              value={newInventory.b_side_gallons}
-                              onChange={(e) => setNewInventory(p => ({ ...p, b_side_gallons: e.target.value }))}
-                              className={inputClass}
-                              placeholder="0"
-                            />
-                          </div>
-                        </>
-                      )}
+                      {(() => {
+                        const isSurplus = newInventory.source === 'surplus_material';
+                        if (newInventory.complete_set) {
+                          const perSideNum = parseFloat(newInventory.set_gallons_per_side);
+                          const isDeduction = !Number.isNaN(perSideNum) && perSideNum < 0;
+                          const setCost = parseFloat(newInventory.cost_per_set);
+                          const totalGal = !Number.isNaN(perSideNum) ? perSideNum * 2 : 0;
+                          const derivedPerGal = !Number.isNaN(setCost) && totalGal !== 0 ? setCost / totalGal : null;
+                          return (
+                            <>
+                              <div>
+                                <label className={labelClass}>Gallons per Side (A = B) <span className="text-gray-400 font-normal">(neg = return)</span></label>
+                                <input
+                                  type="number" step="0.1"
+                                  value={newInventory.set_gallons_per_side}
+                                  onChange={(e) => setNewInventory(p => ({ ...p, set_gallons_per_side: e.target.value }))}
+                                  className={inputClass}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Standard barrel = 55 gal. A set = 55 A + 55 B = 110 total.</p>
+                              </div>
+                              {(isDeduction || isSurplus) ? (
+                                <div className="text-xs px-2 py-1.5 bg-amber-50 border border-amber-200 rounded text-amber-800 self-end">
+                                  {isSurplus
+                                    ? 'Surplus material — cost basis $0.'
+                                    : 'Deduction — cost basis $0.'}
+                                </div>
+                              ) : (
+                                <div>
+                                  <label className={labelClass}>Cost per Complete Set ($)</label>
+                                  <input
+                                    type="number" step="0.01" min="0"
+                                    value={newInventory.cost_per_set}
+                                    onChange={(e) => setNewInventory(p => ({ ...p, cost_per_set: e.target.value }))}
+                                    className={inputClass}
+                                    placeholder="0.00"
+                                  />
+                                  <p className="text-xs text-gray-600 mt-1">
+                                    {derivedPerGal != null
+                                      ? <>= <span className="font-medium text-gray-800">${derivedPerGal.toFixed(2)}/gal</span> across both sides</>
+                                      : <span className="text-gray-400">Enter set cost to see $/gal</span>}
+                                  </p>
+                                </div>
+                              )}
+                            </>
+                          );
+                        }
+                        // Standalone barrel mode
+                        const renderSidePair = (sideKey, sideLabel, gallonsField, costField) => {
+                          const val = parseFloat(newInventory[gallonsField]);
+                          const hasVal = !Number.isNaN(val) && val !== 0;
+                          const isDeduction = hasVal && val < 0;
+                          const showCost = hasVal && !isDeduction && !isSurplus;
+                          const barrelCost = parseFloat(newInventory[costField]);
+                          const derivedPerGal = !Number.isNaN(barrelCost) ? barrelCost / 55 : null;
+                          return (
+                            <div className="border border-gray-200 rounded-lg p-2.5 bg-white">
+                              <label className={labelClass}>{sideLabel} Gallons <span className="text-gray-400 font-normal">(neg = deduction)</span></label>
+                              <input
+                                type="number" step="0.1"
+                                value={newInventory[gallonsField]}
+                                onChange={(e) => setNewInventory(p => ({ ...p, [gallonsField]: e.target.value }))}
+                                className={inputClass}
+                                placeholder="0"
+                              />
+                              {showCost && (
+                                <div className="mt-2">
+                                  <label className={labelClass}>Cost per 55-gal Barrel ($)</label>
+                                  <input
+                                    type="number" step="0.01" min="0"
+                                    value={newInventory[costField]}
+                                    onChange={(e) => setNewInventory(p => ({ ...p, [costField]: e.target.value }))}
+                                    className={inputClass}
+                                    placeholder="0.00"
+                                  />
+                                  <p className="text-xs text-gray-600 mt-1">
+                                    {derivedPerGal != null
+                                      ? <>= <span className="font-medium text-gray-800">${derivedPerGal.toFixed(2)}/gal</span></>
+                                      : <span className="text-gray-400">Enter barrel cost to see $/gal</span>}
+                                  </p>
+                                </div>
+                              )}
+                              {(isDeduction || (hasVal && isSurplus)) && (
+                                <div className="mt-2 text-xs px-2 py-1 bg-amber-50 border border-amber-200 rounded text-amber-800">
+                                  {isSurplus ? 'Surplus — cost $0.' : 'Deduction — cost $0.'}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        };
+                        return (
+                          <>
+                            {renderSidePair('a', 'A-side / ISO', 'a_side_gallons', 'cost_per_barrel_a')}
+                            {renderSidePair('b', 'B-side / Resin', 'b_side_gallons', 'cost_per_barrel_b')}
+                          </>
+                        );
+                      })()}
                       <div className="sm:col-span-2 text-xs text-gray-600 -mt-1">
-                        Set total: <span className="font-medium">{setTotal.toFixed(1)} gal</span>
-                        {setTotal > 0 && <span className="text-gray-500"> (A: {aVal.toFixed(1)} · B: {bVal.toFixed(1)})</span>}
+                        Total: <span className="font-medium">{setTotal.toFixed(1)} gal</span>
+                        {totalAbs > 0 && <span className="text-gray-500"> (A: {aVal.toFixed(1)} · B: {bVal.toFixed(1)})</span>}
                       </div>
                       <div>
                         <label className={labelClass}>Batch ID (optional)</label>
