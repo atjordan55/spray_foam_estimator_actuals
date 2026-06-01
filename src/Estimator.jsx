@@ -192,6 +192,7 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const [actualsConfirmed, setActualsConfirmed] = useState(false);
   const [recentEstimates, setRecentEstimates] = useState([]);
   const [showComparison, setShowComparison] = useState(false);
+  const [showMobileTotals, setShowMobileTotals] = useState(false);
   const [estimateNameManuallyEdited, setEstimateNameManuallyEdited] = useState(false);
   const [chargedLaborRateInput, setChargedLaborRateInput] = useState("");
   const [chargedLaborRateError, setChargedLaborRateError] = useState("");
@@ -4110,6 +4111,70 @@ export default function SprayFoamEstimator({ onAdmin }) {
             )}
           </div>
         </div>
+        <div className="h-24 xl:hidden no-print" aria-hidden="true"></div>
+      </div>
+
+      {/* Mobile sticky totals bar — phones/tablets only, keeps quote totals in view on-site */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 xl:hidden no-print">
+        {showMobileTotals && (
+          <div className="mx-3 mb-2 rounded-xl bg-white p-4 shadow-2xl border border-gray-200">
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Sales Price</span>
+                <span className="font-medium">${totalJobCost.toFixed(2)}</span>
+              </div>
+              {discountDollar > 0 && (
+                <div className="flex justify-between text-blue-600">
+                  <span>Discount ({discountPercent.toFixed(1)}%)</span>
+                  <span>-${discountDollar.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-semibold">
+                <span>Customer Charge</span>
+                <span>${customerCost.toFixed(2)}</span>
+              </div>
+              {depositDollar > 0 && (
+                <div className="flex justify-between text-blue-600">
+                  <span>Deposit Due ({depositPercent.toFixed(1)}%)</span>
+                  <span>${depositDollar.toFixed(2)}</span>
+                </div>
+              )}
+              <hr className="my-1" />
+              <div className="flex justify-between">
+                <span className="text-gray-600">Base Job Cost</span>
+                <span>${totalBaseCost.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Sales Commission</span>
+                <span>${salesCommission.toFixed(2)}</span>
+              </div>
+              <div className={`flex justify-between font-bold ${marginColor}`}>
+                <span>Final Estimated Profit</span>
+                <span>${estimatedProfit.toFixed(2)} ({profitMargin.toFixed(1)}%)</span>
+              </div>
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowMobileTotals((v) => !v)}
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+          className="w-full bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.08)] px-4 py-3 flex items-center justify-between"
+        >
+          <div className="text-left">
+            <div className="text-[11px] uppercase tracking-wide text-gray-400">Customer Charge</div>
+            <div className="text-xl font-bold text-gray-900">${customerCost.toFixed(2)}</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-wide text-gray-400">Profit</div>
+              <div className={`text-base font-bold ${marginColor}`}>${estimatedProfit.toFixed(2)} <span className="text-xs">({profitMargin.toFixed(1)}%)</span></div>
+            </div>
+            <svg className={`w-5 h-5 text-gray-400 transition-transform ${showMobileTotals ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </div>
+        </button>
       </div>
     </div>
   );
