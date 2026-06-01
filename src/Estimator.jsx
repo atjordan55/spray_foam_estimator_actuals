@@ -224,6 +224,8 @@ export default function SprayFoamEstimator({ onAdmin }) {
   const [showInventoryPanel, setShowInventoryPanel] = useState(false);
   const [surplusSubmitting, setSurplusSubmitting] = useState(false);
   const [surplusSuccess, setSurplusSuccess] = useState('');
+  const [mixedIsoSubmitting, setMixedIsoSubmitting] = useState(false);
+  const [mixedIsoSuccess, setMixedIsoSuccess] = useState('');
   const [committedCredits, setCommittedCredits] = useState({});
   const [depositDollar, setDepositDollar] = useState(0);
   const [depositPercent, setDepositPercent] = useState(0);
@@ -517,7 +519,13 @@ export default function SprayFoamEstimator({ onAdmin }) {
       if (perType && (perType.iso != null || perType.resin != null)) {
         const iso = parseFloat(perType.iso) || 0;
         const resin = parseFloat(perType.resin) || 0;
-        gals = iso + resin;
+        let used = iso + resin;
+        // Mixed ISO: alternate-ISO gallons come from another product, so deduct
+        // them from this (closed-cell) product's usage and bill them separately.
+        if (perType.isoAllCC === false && perType.altIsoTypeId) {
+          used -= parseFloat(perType.altIsoGallons) || 0;
+        }
+        gals = Math.max(0, used);
       } else {
         // Fall back to global totals based on foam category.
         const summaryEntry = inventorySummary.find(s => s.material_type_id === fid);
@@ -545,12 +553,92 @@ export default function SprayFoamEstimator({ onAdmin }) {
         body: JSON.stringify({ actuals: actualsPayload }),
       });
       if (!res.ok) throw new Error(`reconcile ${res.status}`);
+      // Apply any alternate-ISO deductions as part of reconcile so they can't be
+      // skipped. Idempotent: already-deducted gallons are excluded.
+      await submitMixedIsoToInventory(computeMixedIsoItems(), { throwOnError: true });
       await loadInventorySummary();
       setCommittedCredits({});
       setSurplusSuccess('Inventory reconciled from actuals.');
       setTimeout(() => setSurplusSuccess(''), 5000);
     } catch (err) {
       console.error('Reconcile error:', err);
+    }
+  };
+
+  // Collect alternate-ISO substitutions recorded on closed-cell foam types.
+  // Each item represents gallons of another product used as A-side ISO.
+  const computeMixedIsoItems = () => {
+    const abByType = actuals.actualABByFoamType || {};
+    const closedIds = new Set();
+    sprayAreas.forEach(area => (area.foamApplications || []).forEach(app => {
+      if (app.applicationType !== 'Coating' && (app.foamTypeCategory === 'Closed' || app.foamType === 'Closed')) {
+        closedIds.add(app.foamTypeId || 'closed-cell');
+      }
+    }));
+    const items = [];
+    Object.entries(abByType).forEach(([fid, entry]) => {
+      if (!entry || entry.isoAllCC !== false || !entry.altIsoTypeId) return;
+      if (!closedIds.has(fid)) return;
+      const altGal = parseFloat(entry.altIsoGallons) || 0;
+      const already = parseFloat(entry.altIsoDeductedGallons) || 0;
+      // Only the not-yet-deducted remainder is offered, so re-clicking or
+      // re-running reconcile cannot double-deduct the same gallons.
+      const net = Math.round((altGal - already) * 100) / 100;
+      if (net < 0.05) return;
+      items.push({
+        fromFoamTypeId: fid,
+        altIsoTypeId: entry.altIsoTypeId,
+        altIsoTypeName: entry.altIsoTypeName || entry.altIsoTypeId,
+        gallons: net,
+      });
+    });
+    return items;
+  };
+
+  const submitMixedIsoToInventory = async (items, { throwOnError = false } = {}) => {
+    if (!items || items.length === 0) return;
+    setMixedIsoSubmitting(true);
+    try {
+      const rows = items.map(it => ({
+        material_type_id: it.altIsoTypeId,
+        material_type_name: it.altIsoTypeName,
+        material_category: 'foam',
+        a_side_gallons: -it.gallons,
+        b_side_gallons: 0,
+        cost_per_gallon: 0,
+        source: 'adjustment',
+        source_estimate_name: estimateName || '',
+        source_job_date: completionDate || engagementDate || '',
+        notes: `Mixed ISO: ${it.gallons.toFixed(1)} gal of ${it.altIsoTypeName} (A-side ISO) used in closed-cell job`,
+      }));
+      const res = await fetch('/api/inventory/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      });
+      if (!res.ok) throw new Error(`mixed-iso batch ${res.status}`);
+      await loadInventorySummary();
+      // Record what was deducted so the same gallons can't be deducted again.
+      setActuals(prev => {
+        const next = { ...prev, actualABByFoamType: { ...(prev.actualABByFoamType || {}) } };
+        items.forEach(it => {
+          const e = next.actualABByFoamType[it.fromFoamTypeId];
+          if (e) {
+            next.actualABByFoamType[it.fromFoamTypeId] = {
+              ...e,
+              altIsoDeductedGallons: (parseFloat(e.altIsoDeductedGallons) || 0) + it.gallons,
+            };
+          }
+        });
+        return next;
+      });
+      setMixedIsoSuccess(`Deducted ${items.length} alternate ISO entr${items.length === 1 ? 'y' : 'ies'} from inventory.`);
+      setTimeout(() => setMixedIsoSuccess(''), 5000);
+    } catch (err) {
+      console.error('Mixed ISO deduction error:', err);
+      if (throwOnError) throw err;
+    } finally {
+      setMixedIsoSubmitting(false);
     }
   };
 
@@ -1810,7 +1898,40 @@ export default function SprayFoamEstimator({ onAdmin }) {
     actualCoatingMaterialCost += fullCost * paidFraction;
   });
   actualCoatingMaterialCost = Math.round(actualCoatingMaterialCost * 100) / 100;
-  const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon + actualCoatingMaterialCost) * 100) / 100;
+
+  // Mixed ISO: when a closed-cell job substitutes another product's ISO into the
+  // A-side, reprice those gallons. They are already counted in the closed-cell
+  // total at the closed cost; swap that out for the alternate product's standard
+  // per-gallon cost. Net adjustment = altGallons × (altCost − closedTypeCost).
+  const getFoamTypeCostPerGallon = (typeId) => {
+    const fts = getFoamTypesFromSettings(adminSettings);
+    const ftx = fts.find(f => f.id === typeId);
+    if (!ftx) return 0;
+    const price = parseFloat(ftx.cost ?? ftx.foamCostPerSet ?? ftx.materialPrice ?? 0) || 0;
+    const pct = parseFloat(ftx.materialCostPct ?? 20) || 0;
+    const usable = parseFloat(ftx.usableGallonsPerSet) || 100;
+    return usable > 0 ? (price * (1 + pct / 100)) / usable : 0;
+  };
+  let mixedIsoAdjustment = 0;
+  {
+    const abByTypeCost = actuals.actualABByFoamType || {};
+    const closedIdsCost = new Set();
+    sprayAreas.forEach(area => (area.foamApplications || []).forEach(app => {
+      if (app.applicationType !== 'Coating' && (app.foamTypeCategory === 'Closed' || app.foamType === 'Closed')) {
+        closedIdsCost.add(app.foamTypeId || 'closed-cell');
+      }
+    }));
+    Object.entries(abByTypeCost).forEach(([fid, entry]) => {
+      if (!entry || entry.isoAllCC !== false || !entry.altIsoTypeId) return;
+      if (!closedIdsCost.has(fid)) return;
+      const altGal = parseFloat(entry.altIsoGallons) || 0;
+      if (altGal <= 0) return;
+      mixedIsoAdjustment += altGal * (getFoamTypeCostPerGallon(entry.altIsoTypeId) - getFoamTypeCostPerGallon(fid));
+    });
+  }
+  mixedIsoAdjustment = Math.round(mixedIsoAdjustment * 100) / 100;
+
+  const actualMaterialCost = Math.round((effectiveActualOpenGallons * openCostPerGallon + effectiveActualClosedGallons * closedCostPerGallon + actualCoatingMaterialCost + mixedIsoAdjustment) * 100) / 100;
   const actualLaborCost = Math.round(effectiveActualLaborHours * globalInputs.manualLaborRate * 100) / 100;
   const actualWasteDisposalBase = parseFloat(effectiveActualWasteDisposal) || 0;
   const actualEquipmentRentalBase = parseFloat(effectiveActualEquipmentRental) || 0;
@@ -3166,6 +3287,17 @@ export default function SprayFoamEstimator({ onAdmin }) {
                           setActuals(prev => {
                             const next = { ...prev, actualABByFoamType: { ...(prev.actualABByFoamType || {}) } };
                             next.actualABByFoamType[ft.id] = { ...(next.actualABByFoamType[ft.id] || {}), [field]: (isNaN(num) ? null : num) };
+                            // When total ISO changes, re-resolve any alternate-ISO amount against the new total.
+                            if (field === 'iso') {
+                              const e2 = next.actualABByFoamType[ft.id];
+                              if (e2 && e2.isoAllCC === false && e2.altIsoAmount != null) {
+                                const isoT = e2.iso != null ? parseFloat(e2.iso) || 0 : 0;
+                                let g = e2.altIsoUnit === 'pct' ? (isoT * (parseFloat(e2.altIsoAmount) || 0) / 100) : (parseFloat(e2.altIsoAmount) || 0);
+                                g = Math.max(0, Math.min(g, isoT));
+                                e2.altIsoGallons = g;
+                                e2.altIsoPercent = isoT > 0 ? (g / isoT) * 100 : null;
+                              }
+                            }
                             // Keep legacy totals in sync for back-compat readers.
                             let totalIso = 0, totalResin = 0, anyIso = false, anyResin = false;
                             Object.values(next.actualABByFoamType).forEach(v => {
@@ -3234,6 +3366,131 @@ export default function SprayFoamEstimator({ onAdmin }) {
                                 />
                               </div>
                             </div>
+                            {ft.category === 'Closed' && (() => {
+                              const isoTotal = iso != null ? parseFloat(iso) || 0 : 0;
+                              const allCC = cur.isoAllCC !== false; // default true
+                              const altId = cur.altIsoTypeId || '';
+                              const altUnit = cur.altIsoUnit || 'gal';
+                              const altGal = parseFloat(cur.altIsoGallons) || 0;
+                              const remaining = Math.max(0, isoTotal - altGal);
+                              const altOptions = getFoamTypesFromSettings(adminSettings).filter(f => f.id !== ft.id);
+                              const amtKey = `altamt_${ft.id}`;
+                              const amtFocused = !!actualsFocused[amtKey];
+                              const setMix = (patch) => {
+                                setActuals(prev => {
+                                  const next = { ...prev, actualABByFoamType: { ...(prev.actualABByFoamType || {}) } };
+                                  next.actualABByFoamType[ft.id] = { ...(next.actualABByFoamType[ft.id] || {}), ...patch };
+                                  return next;
+                                });
+                              };
+                              const resolveGallons = (e2) => {
+                                const isoT = e2.iso != null ? parseFloat(e2.iso) || 0 : 0;
+                                if (e2.altIsoAmount == null) { e2.altIsoGallons = null; e2.altIsoPercent = null; return; }
+                                let g = e2.altIsoUnit === 'pct' ? (isoT * (parseFloat(e2.altIsoAmount) || 0) / 100) : (parseFloat(e2.altIsoAmount) || 0);
+                                g = Math.max(0, Math.min(g, isoT));
+                                e2.altIsoGallons = g;
+                                e2.altIsoPercent = isoT > 0 ? (g / isoT) * 100 : null;
+                              };
+                              const setUnit = (unit) => {
+                                setActuals(prev => {
+                                  const next = { ...prev, actualABByFoamType: { ...(prev.actualABByFoamType || {}) } };
+                                  const e2 = { ...(next.actualABByFoamType[ft.id] || {}), altIsoUnit: unit };
+                                  resolveGallons(e2);
+                                  next.actualABByFoamType[ft.id] = e2;
+                                  return next;
+                                });
+                              };
+                              const commitAmt = (raw) => {
+                                const amt = raw === '' || raw == null ? null : parseFloat(raw);
+                                setActuals(prev => {
+                                  const next = { ...prev, actualABByFoamType: { ...(prev.actualABByFoamType || {}) } };
+                                  const e2 = { ...(next.actualABByFoamType[ft.id] || {}) };
+                                  e2.altIsoAmount = (amt == null || isNaN(amt)) ? null : amt;
+                                  resolveGallons(e2);
+                                  next.actualABByFoamType[ft.id] = e2;
+                                  return next;
+                                });
+                              };
+                              return (
+                                <div className="mt-3">
+                                  <label className="flex items-center gap-2 text-xs font-medium text-gray-700">
+                                    <input
+                                      type="checkbox"
+                                      checked={allCC}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setMix({ isoAllCC: true, altIsoTypeId: null, altIsoTypeName: null, altIsoUnit: null, altIsoAmount: null, altIsoGallons: null, altIsoPercent: null });
+                                        } else {
+                                          setMix({ isoAllCC: false });
+                                        }
+                                      }}
+                                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    All CC (all ISO is closed-cell)
+                                  </label>
+                                  {!allCC && (
+                                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+                                      <p className="text-xs text-gray-600">
+                                        Part of the A-side ISO came from another product. Keep the total ISO above as all gallons used; the alternate amount below is repriced and deducted from its own inventory.
+                                      </p>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Alternate ISO Product</label>
+                                        <select
+                                          value={altId}
+                                          onChange={(e) => {
+                                            const opt = altOptions.find(o => o.id === e.target.value);
+                                            setMix({ altIsoTypeId: opt ? opt.id : null, altIsoTypeName: opt ? (opt.productName ?? opt.name) : null });
+                                          }}
+                                          className="w-full border border-gray-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                          <option value="">Select a product…</option>
+                                          {altOptions.map(o => (
+                                            <option key={o.id} value={o.id}>{o.productName ?? o.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Amount used</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="number" step="0.1" min="0"
+                                            value={amtFocused
+                                              ? (actualsInputs[amtKey] ?? '')
+                                              : (cur.altIsoAmount != null ? String(cur.altIsoAmount) : '')}
+                                            onChange={(e) => setActualsInputs(prev => ({ ...prev, [amtKey]: e.target.value }))}
+                                            onFocus={() => {
+                                              setActualsFocused(prev => ({ ...prev, [amtKey]: true }));
+                                              setActualsInputs(prev => ({ ...prev, [amtKey]: cur.altIsoAmount != null ? String(cur.altIsoAmount) : '' }));
+                                            }}
+                                            onBlur={() => {
+                                              setActualsFocused(prev => ({ ...prev, [amtKey]: false }));
+                                              if (actualsInputs[amtKey] !== undefined) commitAmt(actualsInputs[amtKey]);
+                                              setActualsInputs(prev => { const u = { ...prev }; delete u[amtKey]; return u; });
+                                            }}
+                                            className="flex-1 border border-gray-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                          />
+                                          <select
+                                            value={altUnit}
+                                            onChange={(e) => setUnit(e.target.value)}
+                                            className="border border-gray-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                          >
+                                            <option value="gal">gallons</option>
+                                            <option value="pct">% of total ISO</option>
+                                          </select>
+                                        </div>
+                                      </div>
+                                      <div className="text-xs text-gray-700">
+                                        Closed-cell ISO used: <strong>{remaining.toFixed(1)} gal</strong>
+                                        <span className="text-gray-500"> (alternate {altGal.toFixed(1)} gal of {isoTotal.toFixed(1)} total ISO)</span>
+                                      </div>
+                                      {altGal > 0 && !altId && (
+                                        <div className="text-xs text-red-600">Select the alternate ISO product.</div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                             {ratio != null && (
                               <div className="mt-2 flex items-center">
                                 <span className="text-xs font-medium text-gray-700 mr-2">Spray Ratio:</span>
@@ -3440,6 +3697,43 @@ export default function SprayFoamEstimator({ onAdmin }) {
                     </div>
                     {surplusSuccess && (
                       <div className="mt-2 p-2 bg-green-100 text-green-800 text-sm rounded">{surplusSuccess}</div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {actualsConfirmed && (() => {
+                const mixedItems = computeMixedIsoItems();
+                if (mixedItems.length === 0) return null;
+                const totalAlt = mixedItems.reduce((s, i) => s + i.gallons, 0);
+                return (
+                  <div className="mt-4 p-4 bg-indigo-50 border border-indigo-300 rounded-lg">
+                    <h4 className="font-semibold text-indigo-900 mb-2">Mixed ISO Substitution Detected</h4>
+                    <p className="text-sm text-indigo-800 mb-2">
+                      Some A-side ISO came from another product. Deduct those gallons from the alternate product's inventory:
+                    </p>
+                    <ul className="text-sm text-indigo-900 mb-3 ml-4 list-disc">
+                      {mixedItems.map(item => (
+                        <li key={item.fromFoamTypeId}>
+                          <strong>{item.altIsoTypeName}:</strong> {item.gallons.toFixed(1)} gal used as ISO
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-indigo-900">
+                        Total: {totalAlt.toFixed(1)} gal
+                      </span>
+                      <button
+                        type="button"
+                        disabled={mixedIsoSubmitting}
+                        onClick={() => submitMixedIsoToInventory(mixedItems)}
+                        className="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm font-medium disabled:bg-gray-400"
+                      >
+                        {mixedIsoSubmitting ? 'Deducting…' : 'Deduct from Inventory'}
+                      </button>
+                    </div>
+                    {mixedIsoSuccess && (
+                      <div className="mt-2 p-2 bg-green-100 text-green-800 text-sm rounded">{mixedIsoSuccess}</div>
                     )}
                   </div>
                 );

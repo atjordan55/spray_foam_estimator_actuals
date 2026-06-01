@@ -1,0 +1,2 @@
+- [Inventory source enum](inventory-source-enum.md) — material_inventory.source has a CHECK constraint; new write sources must be an allowed value or added in BOTH server.js and migrations.sql.
+- [Dev/Vercel parity](dev-vercel-parity.md) — server.js (Replit dev) and api/* (Vercel) must stay behaviorally identical; same for migrations.sql vs server.js schema bootstrap.
