@@ -1583,7 +1583,14 @@ export default function AdminConsole({ onBack }) {
                             </td>
                             <td className="py-2 pr-3">{r.estimate_name || r.estimate_id?.slice(0, 8) || '—'}</td>
                             <td className="py-2 pr-3 text-gray-700">{r.customer_name || '—'}</td>
-                            <td className="py-2 pr-3">{r.material_type_name}</td>
+                            <td className="py-2 pr-3">
+                              {r.material_type_name}
+                              {(parseFloat(r.a_reserved) > 0 || parseFloat(r.b_reserved) > 0) && (
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  A-side (ISO): {(parseFloat(r.a_reserved) || 0).toFixed(1)} gal · B-side (Resin): {(parseFloat(r.b_reserved) || 0).toFixed(1)} gal
+                                </div>
+                              )}
+                            </td>
                             <td className="py-2 pr-3 text-right">{gals.toFixed(1)}</td>
                             <td className="py-2 pr-3">
                               <span className={`inline-block px-2 py-0.5 text-xs rounded ${statusColor}`}>{r.status}</span>

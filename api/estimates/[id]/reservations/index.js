@@ -40,13 +40,18 @@ module.exports = async function handler(req, res) {
           );
           const name = lookup.rows[0]?.material_type_name || materialTypeId;
           const category = lookup.rows[0]?.material_category || 'foam';
+          // Foam is a two-part product (A = ISO, B = Resin); reserve it 50/50 across the
+          // two sides. Non-foam (coating) is single-component, so no per-side split.
+          const isFoam = category === 'foam';
+          const aReserved = isFoam ? Math.round((gallons / 2) * 100) / 100 : 0;
+          const bReserved = isFoam ? gallons - aReserved : 0;
           const row = await client.query(
             `INSERT INTO inventory_reservations
                (estimate_id, material_type_id, material_type_name, material_category,
-                gallons_surplus, gallons_non_surplus, status, updated_at)
-             VALUES ($1, $2, $3, $4, $5, 0, 'reserved', NOW())
+                gallons_surplus, gallons_non_surplus, a_reserved, b_reserved, status, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 0, $6, $7, 'reserved', NOW())
              RETURNING *`,
-            [estimateId, materialTypeId, name, category, gallons]
+            [estimateId, materialTypeId, name, category, gallons, aReserved, bReserved]
           );
           inserted.push(row.rows[0]);
         }
